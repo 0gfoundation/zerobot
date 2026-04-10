@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+cache/
+artifacts/
+typechain-types/
+coverage/
+.svelte-kit/
+.env
+*.tsbuildinfo
+.DS_Store
