@@ -76,6 +76,31 @@ User/Controller → Smart Contract (dispatchCommand) → CommandDispatched event
 - **RobotRegistry** — Robot identity, owner/controller permissions, command pricing. `msg.sender` becomes owner on registration (permissionless, no admin).
 - **RobotCommandDispatcher** — Command queue with monotonic nonces, 5-minute expiry, payment enforcement, execution receipts. References Registry for authorization.
 
+## Robot Compatibility
+
+- **Official Unitree SDK (`unitree_sdk2`) is EDU-only** — uses CycloneDDS over wired Ethernet. Go2 Pro and G1 Basic do not support it.
+- **WebRTC is the only viable interface for Go2 Pro and G1 Basic** — the `webrtc_bridge` service runs on all variants and is the same pathway the official Unitree app uses.
+- **What works via WebRTC (all variants):** High-level sport commands, video/audio, LiDAR, motion state, VUI, motion switcher.
+- **What does NOT work via WebRTC (EDU-only):** Low-level joint control, SLAM/Navigation, ROS2, GST streaming.
+- **Supported firmware:** 1.0.19 through 1.1.14. Firmware 1.1.8+ adds AES-GCM encryption layer to SDP exchange.
+
+### Go2 Pro Command Parameter Ranges
+
+| Command | Parameter | Range |
+|---------|-----------|-------|
+| Move | vx (forward) | -2.5 to 3.8 m/s |
+| Move | vy (lateral) | -1.0 to 1.0 m/s |
+| Move | vyaw (rotation) | -4 to 4 rad/s |
+| Euler | roll, pitch | -0.75 to 0.75 rad |
+| Euler | yaw | -0.6 to 0.6 rad |
+| SpeedLevel | level | -1 (slow), 0 (normal), 1 (fast) |
+
+Move command is maintained for 1 second. Send `Move(0,0,0)` or `StopMove()` to halt.
+
+### G1 Basic (future support)
+
+G1 uses `LocoClient` (not `SportClient`) with different API IDs and topics (`rt/api/loco/request`). Movement via `rt/wirelesscontroller` with joystick format `{lx, ly, rx, ry, keys}`. Has arm action service at `rt/api/arm/request` with ~15 preset gestures. WebRTC connection infrastructure is shared.
+
 ## Key Technical Details
 
 - **WebRTC crypto:** Robot requires AES-256-ECB and RSA PKCS1-V1.5 (not available in SubtleCrypto). SDK uses `node-forge` (pure JS, works in Node + browser).
@@ -86,6 +111,6 @@ User/Controller → Smart Contract (dispatchCommand) → CommandDispatched event
 
 ## Deployed Contracts (Galileo Testnet)
 
-- Registry: `0x005E35a7bFcc98d2036EeBba1B5cC02E8d5523DC`
-- Dispatcher: `0x049d7D31E95a7BEdE2ce7D71E32fa0eA8819c0c3`
+- Registry: `0xBb42945B9ec1FD084da18Ad429338809e82eD4E2`
+- Dispatcher: `0x380498cE316a860c900541603017Bd4F41A11DC4`
 - Chain ID: 16602, RPC: `https://evmrpc-testnet.0g.ai`

@@ -156,9 +156,9 @@ export const REGISTRY_ABI = [
             "type": "string"
           },
           {
-            "internalType": "string",
-            "name": "metadataURI",
-            "type": "string"
+            "internalType": "bytes32",
+            "name": "storageRoot",
+            "type": "bytes32"
           },
           {
             "internalType": "bool",
@@ -216,9 +216,9 @@ export const REGISTRY_ABI = [
         "type": "string"
       },
       {
-        "internalType": "string",
-        "name": "metadataURI",
-        "type": "string"
+        "internalType": "bytes32",
+        "name": "storageRoot",
+        "type": "bytes32"
       }
     ],
     "name": "registerRobot",
@@ -270,9 +270,9 @@ export const REGISTRY_ABI = [
         "type": "bytes32"
       },
       {
-        "internalType": "string",
-        "name": "metadataURI",
-        "type": "string"
+        "internalType": "bytes32",
+        "name": "storageRoot",
+        "type": "bytes32"
       },
       {
         "internalType": "bool",

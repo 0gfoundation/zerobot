@@ -1,5 +1,5 @@
-export const REGISTRY_ADDRESS = '0x005E35a7bFcc98d2036EeBba1B5cC02E8d5523DC' as const;
-export const DISPATCHER_ADDRESS = '0x049d7D31E95a7BEdE2ce7D71E32fa0eA8819c0c3' as const;
+export const REGISTRY_ADDRESS = '0xBb42945B9ec1FD084da18Ad429338809e82eD4E2' as const;
+export const DISPATCHER_ADDRESS = '0x380498cE316a860c900541603017Bd4F41A11DC4' as const;
 
 export const REGISTRY_ABI = [
 	{
@@ -8,7 +8,7 @@ export const REGISTRY_ABI = [
 		inputs: [
 			{ name: 'robotId', type: 'bytes32' },
 			{ name: 'robotType', type: 'string' },
-			{ name: 'metadataURI', type: 'string' }
+			{ name: 'storageRoot', type: 'bytes32' }
 		],
 		outputs: [],
 		stateMutability: 'nonpayable'
@@ -18,7 +18,7 @@ export const REGISTRY_ABI = [
 		name: 'updateRobot',
 		inputs: [
 			{ name: 'robotId', type: 'bytes32' },
-			{ name: 'metadataURI', type: 'string' },
+			{ name: 'storageRoot', type: 'bytes32' },
 			{ name: 'active', type: 'bool' }
 		],
 		outputs: [],
@@ -75,7 +75,7 @@ export const REGISTRY_ABI = [
 				components: [
 					{ name: 'owner', type: 'address' },
 					{ name: 'robotType', type: 'string' },
-					{ name: 'metadataURI', type: 'string' },
+					{ name: 'storageRoot', type: 'bytes32' },
 					{ name: 'active', type: 'bool' },
 					{ name: 'registeredAt', type: 'uint256' }
 				]

@@ -5,7 +5,7 @@ interface IRobotRegistry {
     struct Robot {
         address owner;
         string robotType;
-        string metadataURI;
+        bytes32 storageRoot;
         bool active;
         uint256 registeredAt;
     }
@@ -16,8 +16,8 @@ interface IRobotRegistry {
     event ControllerRemoved(bytes32 indexed robotId, address indexed controller);
     event CommandPriceSet(bytes32 indexed robotId, uint256 price);
 
-    function registerRobot(bytes32 robotId, string calldata robotType, string calldata metadataURI) external;
-    function updateRobot(bytes32 robotId, string calldata metadataURI, bool active) external;
+    function registerRobot(bytes32 robotId, string calldata robotType, bytes32 storageRoot) external;
+    function updateRobot(bytes32 robotId, bytes32 storageRoot, bool active) external;
     function addController(bytes32 robotId, address controller) external;
     function removeController(bytes32 robotId, address controller) external;
     function setCommandPrice(bytes32 robotId, uint256 price) external;

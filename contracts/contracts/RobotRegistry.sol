@@ -21,14 +21,14 @@ contract RobotRegistry is IRobotRegistry {
     function registerRobot(
         bytes32 robotId,
         string calldata robotType,
-        string calldata metadataURI
+        bytes32 storageRoot
     ) external {
         require(_robots[robotId].owner == address(0), "Robot already registered");
 
         _robots[robotId] = Robot({
             owner: msg.sender,
             robotType: robotType,
-            metadataURI: metadataURI,
+            storageRoot: storageRoot,
             active: true,
             registeredAt: block.timestamp
         });
@@ -38,10 +38,10 @@ contract RobotRegistry is IRobotRegistry {
 
     function updateRobot(
         bytes32 robotId,
-        string calldata metadataURI,
+        bytes32 storageRoot,
         bool active
     ) external onlyOwner(robotId) {
-        _robots[robotId].metadataURI = metadataURI;
+        _robots[robotId].storageRoot = storageRoot;
         _robots[robotId].active = active;
         emit RobotUpdated(robotId);
     }

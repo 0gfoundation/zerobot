@@ -34,8 +34,8 @@ export const networks: Record<number, NetworkConfig> = {
 	[zeroGTestnet.id]: {
 		chain: zeroGTestnet,
 		contracts: {
-			registry: '0x005E35a7bFcc98d2036EeBba1B5cC02E8d5523DC',
-			dispatcher: '0x049d7D31E95a7BEdE2ce7D71E32fa0eA8819c0c3'
+			registry: '0xBb42945B9ec1FD084da18Ad429338809e82eD4E2',
+			dispatcher: '0x380498cE316a860c900541603017Bd4F41A11DC4'
 		}
 	}
 	// [zeroGMainnet.id]: {

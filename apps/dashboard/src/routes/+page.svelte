@@ -84,7 +84,7 @@
 				})) as {
 					owner: string;
 					robotType: string;
-					metadataURI: string;
+					storageRoot: string;
 					active: boolean;
 					registeredAt: bigint;
 				};
@@ -116,7 +116,7 @@
 				address: network.contracts.registry,
 				abi: REGISTRY_ABI,
 				functionName: 'registerRobot',
-				args: [robotId, newRobotType, '']
+				args: [robotId, newRobotType, '0x0000000000000000000000000000000000000000000000000000000000000000']
 			});
 			log(`Tx: ${hash}`);
 			await wallet.waitForReceipt(hash);
@@ -137,7 +137,7 @@
 				address: network.contracts.registry,
 				abi: REGISTRY_ABI,
 				functionName: 'updateRobot',
-				args: [robotId, '', !currentlyActive]
+				args: [robotId, '0x0000000000000000000000000000000000000000000000000000000000000000', !currentlyActive]
 			});
 			await wallet.waitForReceipt(hash);
 			log(currentlyActive ? 'Deactivated' : 'Activated');
