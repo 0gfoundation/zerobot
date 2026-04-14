@@ -76,6 +76,12 @@ export const REGISTRY_ABI = [
       {
         "indexed": false,
         "internalType": "string",
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
         "name": "robotType",
         "type": "string"
       }
@@ -152,6 +158,11 @@ export const REGISTRY_ABI = [
           },
           {
             "internalType": "string",
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
             "name": "robotType",
             "type": "string"
           },
@@ -209,6 +220,11 @@ export const REGISTRY_ABI = [
         "internalType": "bytes32",
         "name": "robotId",
         "type": "bytes32"
+      },
+      {
+        "internalType": "string",
+        "name": "name",
+        "type": "string"
       },
       {
         "internalType": "string",

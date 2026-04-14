@@ -7,6 +7,7 @@ export const REGISTRY_ABI = [
 		name: 'registerRobot',
 		inputs: [
 			{ name: 'robotId', type: 'bytes32' },
+			{ name: 'name', type: 'string' },
 			{ name: 'robotType', type: 'string' },
 			{ name: 'storageRoot', type: 'bytes32' }
 		],
@@ -74,6 +75,7 @@ export const REGISTRY_ABI = [
 				type: 'tuple',
 				components: [
 					{ name: 'owner', type: 'address' },
+					{ name: 'name', type: 'string' },
 					{ name: 'robotType', type: 'string' },
 					{ name: 'storageRoot', type: 'bytes32' },
 					{ name: 'active', type: 'bool' },
@@ -96,6 +98,7 @@ export const REGISTRY_ABI = [
 		inputs: [
 			{ name: 'robotId', type: 'bytes32', indexed: true },
 			{ name: 'owner', type: 'address', indexed: true },
+			{ name: 'name', type: 'string', indexed: false },
 			{ name: 'robotType', type: 'string', indexed: false }
 		]
 	}

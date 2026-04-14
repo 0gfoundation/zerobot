@@ -20,6 +20,7 @@ contract RobotRegistry is IRobotRegistry {
 
     function registerRobot(
         bytes32 robotId,
+        string calldata name,
         string calldata robotType,
         bytes32 storageRoot
     ) external {
@@ -27,13 +28,14 @@ contract RobotRegistry is IRobotRegistry {
 
         _robots[robotId] = Robot({
             owner: msg.sender,
+            name: name,
             robotType: robotType,
             storageRoot: storageRoot,
             active: true,
             registeredAt: block.timestamp
         });
 
-        emit RobotRegistered(robotId, msg.sender, robotType);
+        emit RobotRegistered(robotId, msg.sender, name, robotType);
     }
 
     function updateRobot(

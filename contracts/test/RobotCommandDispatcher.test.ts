@@ -17,7 +17,7 @@ describe("RobotCommandDispatcher", function () {
     const robotId = ethers.keccak256(ethers.toUtf8Bytes("go2-pro-001"));
 
     // Register robot and add controller
-    await registry.registerRobot(robotId, "go2_pro", ethers.ZeroHash);
+    await registry.registerRobot(robotId, "go2-pro-001", "go2_pro", ethers.ZeroHash);
     await registry.addController(robotId, controller.address);
 
     return { registry, dispatcher, owner, controller, other, robotId };

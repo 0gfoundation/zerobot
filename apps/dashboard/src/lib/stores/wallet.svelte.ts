@@ -8,10 +8,10 @@ import {
 	disconnect as wagmiDisconnect,
 	writeContract as wagmiWriteContract,
 	readContract as wagmiReadContract,
-	waitForTransactionReceipt,
+	getTransactionReceipt,
 	type Connector
 } from '@wagmi/core';
-import { UserRejectedRequestError } from 'viem';
+import { UserRejectedRequestError, createPublicClient, webSocket } from 'viem';
 import { getConfig } from '$lib/wagmi';
 import { network } from '$lib/stores/network.svelte';
 
@@ -119,7 +119,6 @@ class WalletState {
 				this.error = 'Connection request was declined.';
 			} else {
 				this.error = friendlyConnectError(err, connector.name);
-				console.log('[wallet] connect error:', err);
 			}
 		} finally {
 			if (generation === this.connectGeneration) this.userInitiatedConnect = false;
@@ -168,11 +167,83 @@ class WalletState {
 	}
 
 	async waitForReceipt(hash: `0x${string}`) {
-		return waitForTransactionReceipt(getConfig(), {
-			hash,
-			timeout: 60_000,
-			pollingInterval: 2_000
+		const wsUrl = network.chain.rpcUrls.default.webSocket?.[0];
+		if (wsUrl) {
+			try {
+				return await this.waitForReceiptWs(hash, wsUrl);
+			} catch (err) {
+				console.log('[wallet] WebSocket receipt failed, falling back to polling:', err);
+			}
+		}
+		return this.waitForReceiptPolling(hash);
+	}
+
+	private async waitForReceiptWs(hash: `0x${string}`, wsUrl: string) {
+		const wsClient = createPublicClient({
+			chain: network.chain,
+			transport: webSocket(wsUrl)
 		});
+
+		// Verify the WebSocket actually connects by fetching a block number
+		await wsClient.getBlockNumber();
+
+		try {
+			return await new Promise<any>((resolve, reject) => {
+				const timeout = setTimeout(() => {
+					unwatch();
+					reject(new Error('Transaction confirmation timed out'));
+				}, 120_000);
+
+				const unwatch = wsClient.watchBlockNumber({
+					onBlockNumber: async () => {
+						try {
+							const receipt = await wsClient.getTransactionReceipt({ hash });
+							clearTimeout(timeout);
+							unwatch();
+							resolve(receipt);
+						} catch {
+							// Not mined yet
+						}
+					},
+					onError: (err) => {
+						clearTimeout(timeout);
+						unwatch();
+						reject(err);
+					}
+				});
+
+				// Check immediately in case already mined
+				wsClient.getTransactionReceipt({ hash }).then((receipt) => {
+					clearTimeout(timeout);
+					unwatch();
+					resolve(receipt);
+				}).catch(() => {});
+			});
+		} finally {
+			try {
+				const transport = wsClient.transport as any;
+				if (typeof transport.close === 'function') transport.close();
+				else if (transport.getRpcClient) {
+					const rpcClient = await transport.getRpcClient();
+					rpcClient.close();
+				}
+			} catch {}
+		}
+	}
+
+	private async waitForReceiptPolling(hash: `0x${string}`) {
+		const maxAttempts = 40;
+		const intervalMs = 3_000;
+		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+			try {
+				return await getTransactionReceipt(getConfig(), { hash });
+			} catch {
+				if (attempt === maxAttempts) {
+					throw new Error('Transaction confirmation timed out');
+				}
+				await new Promise((r) => setTimeout(r, intervalMs));
+			}
+		}
 	}
 }
 

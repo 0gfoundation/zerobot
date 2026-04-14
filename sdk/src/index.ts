@@ -25,5 +25,8 @@ export { OperatorNode } from "./controller/index.js";
 export type { OperatorNodeEvents } from "./controller/index.js";
 export { Commander } from "./controller/index.js";
 
+// Mock
+export { startMockRobot } from "./mock/index.js";
+
 // Types
 export * from "./types/index.js";

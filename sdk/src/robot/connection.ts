@@ -90,12 +90,20 @@ export class Go2Connection extends EventEmitter<Go2ConnectionEvents> {
       pc.addTransceiver("video", { direction: "recvonly" });
       pc.addTransceiver("audio", { direction: "sendrecv" });
 
-      // Create and exchange SDP
+      // Create and exchange SDP — wait for ICE gathering to complete
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
+      if (pc.iceGatheringState !== "complete") {
+        await new Promise<void>((resolve) => {
+          pc.onicegatheringstatechange = () => {
+            if (pc.iceGatheringState === "complete") resolve();
+          };
+        });
+      }
+
       const answerSdp = await this.signaling.negotiate(
-        offer.sdp!,
+        pc.localDescription!.sdp!,
         this.config.token,
       );
       await pc.setRemoteDescription(

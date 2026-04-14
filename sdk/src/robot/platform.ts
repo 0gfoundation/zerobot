@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { createRequire } from "node:module";
 
 /**
  * Minimal interface for the WebRTC types we need.
@@ -33,8 +34,9 @@ export function getWebRTCProvider(): WebRTCProvider {
     return cachedProvider;
   }
 
-  // Node.js: try to load @roamhq/wrtc
+  // Node.js: try to load @roamhq/wrtc via createRequire (works in ESM)
   try {
+    const require = createRequire(import.meta.url);
     const wrtc = require("@roamhq/wrtc");
     cachedProvider = {
       RTCPeerConnection: wrtc.RTCPeerConnection,

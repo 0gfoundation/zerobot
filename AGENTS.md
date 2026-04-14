@@ -111,6 +111,6 @@ G1 uses `LocoClient` (not `SportClient`) with different API IDs and topics (`rt/
 
 ## Deployed Contracts (Galileo Testnet)
 
-- Registry: `0xBb42945B9ec1FD084da18Ad429338809e82eD4E2`
-- Dispatcher: `0x380498cE316a860c900541603017Bd4F41A11DC4`
+- Registry: `0x2312cE812E35a9cBb65Fa692e566Df4C61D9Ba74`
+- Dispatcher: `0xddc4C76Ea5bE99EC754a8de3FC470364aa29c0b8`
 - Chain ID: 16602, RPC: `https://evmrpc-testnet.0g.ai`

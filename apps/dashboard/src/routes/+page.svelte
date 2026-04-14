@@ -11,6 +11,7 @@
 	let robots = $state<
 		Array<{
 			robotId: `0x${string}`;
+			name: string;
 			robotType: string;
 			active: boolean;
 			registeredAt: bigint;
@@ -26,6 +27,13 @@
 
 	// --- WebRTC ---
 	let robotIp = $state('192.168.123.18');
+
+	const ROBOT_TYPE_LABELS: Record<string, string> = {
+		go2_pro: 'Go2 Pro',
+		go2_air: 'Go2 Air',
+		go2_edu: 'Go2 Edu',
+		g1: 'G1'
+	};
 
 	// --- Log ---
 	let logLines = $state<string[]>([]);
@@ -66,6 +74,7 @@
 					inputs: [
 						{ name: 'robotId', type: 'bytes32', indexed: true },
 						{ name: 'owner', type: 'address', indexed: true },
+						{ name: 'name', type: 'string', indexed: false },
 						{ name: 'robotType', type: 'string', indexed: false }
 					]
 				},
@@ -83,6 +92,7 @@
 					args: [robotId]
 				})) as {
 					owner: string;
+					name: string;
 					robotType: string;
 					storageRoot: string;
 					active: boolean;
@@ -91,6 +101,7 @@
 
 				results.push({
 					robotId,
+					name: data.name,
 					robotType: data.robotType,
 					active: data.active,
 					registeredAt: data.registeredAt
@@ -109,6 +120,26 @@
 		if (!newRobotName.trim()) return;
 		registering = true;
 		const robotId = keccak256(toBytes(newRobotName.trim()));
+
+		try {
+			// Check if robot ID already exists
+			const publicClient = getPublicClient(getConfig(), { chainId: network.chainId });
+			const existing = (await publicClient.readContract({
+				address: network.contracts.registry,
+				abi: REGISTRY_ABI,
+				functionName: 'getRobot',
+				args: [robotId]
+			})) as { owner: string };
+
+			if (existing.owner !== '0x0000000000000000000000000000000000000000') {
+				log(`A robot with the name "${newRobotName}" is already registered. Choose a different name.`);
+				registering = false;
+				return;
+			}
+		} catch {
+			// getRobot failed — likely doesn't exist, proceed
+		}
+
 		log(`Registering "${newRobotName}" (${robotId.slice(0, 18)}...)...`);
 
 		try {
@@ -116,11 +147,16 @@
 				address: network.contracts.registry,
 				abi: REGISTRY_ABI,
 				functionName: 'registerRobot',
-				args: [robotId, newRobotType, '0x0000000000000000000000000000000000000000000000000000000000000000']
+				args: [robotId, newRobotName.trim(), newRobotType, '0x0000000000000000000000000000000000000000000000000000000000000000']
 			});
 			log(`Tx: ${hash}`);
-			await wallet.waitForReceipt(hash);
-			log('Robot registered!');
+			log('Waiting for confirmation...');
+			try {
+				await wallet.waitForReceipt(hash);
+				log('Robot registered!');
+			} catch {
+				log('Confirmation timed out — the transaction may still be processing. Reloading...');
+			}
 			newRobotName = '';
 			await loadRobots();
 		} catch (err: any) {
@@ -139,8 +175,12 @@
 				functionName: 'updateRobot',
 				args: [robotId, '0x0000000000000000000000000000000000000000000000000000000000000000', !currentlyActive]
 			});
-			await wallet.waitForReceipt(hash);
-			log(currentlyActive ? 'Deactivated' : 'Activated');
+			try {
+				await wallet.waitForReceipt(hash);
+				log(currentlyActive ? 'Deactivated' : 'Activated');
+			} catch {
+				log('Confirmation timed out — reloading...');
+			}
 			await loadRobots();
 		} catch (err: any) {
 			log(`Failed: ${err.shortMessage || err.message}`);
@@ -196,7 +236,8 @@
 							class="flex items-center gap-3 rounded border border-line bg-surface-secondary p-3"
 						>
 							<div class="min-w-0 flex-1">
-								<span class="font-semibold text-accent">{r.robotType}</span>
+								<span class="font-semibold text-default">{r.name}</span>
+								<span class="ml-2 text-sm text-muted">{ROBOT_TYPE_LABELS[r.robotType] ?? r.robotType}</span>
 								<span
 									class="ml-2 rounded-full px-2 py-0.5 text-xs font-semibold {r.active
 										? 'bg-success-muted text-success'
