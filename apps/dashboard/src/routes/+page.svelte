@@ -27,6 +27,7 @@
 
 	// --- WebRTC ---
 	let robotIp = $state('192.168.123.18');
+	let connectionMode = $state<'robot' | 'dryrun'>('robot');
 
 	const ROBOT_TYPE_LABELS: Record<string, string> = {
 		go2_pro: 'Go2 Pro',
@@ -195,11 +196,12 @@
 	async function toggleRtc() {
 		if (robot.connected) {
 			robot.disconnect();
-			log('Disconnected from robot');
+			log('Disconnected');
 		} else {
-			log(`Connecting to ${robotIp}...`);
-			await robot.connect(robotIp);
-			if (robot.connected) log('Robot connected!');
+			const ip = connectionMode === 'dryrun' ? '127.0.0.1' : robotIp;
+			log(connectionMode === 'dryrun' ? 'Starting dry run...' : `Connecting to ${ip}...`);
+			await robot.connect(ip);
+			if (robot.connected) log(connectionMode === 'dryrun' ? 'Dry run active!' : 'Robot connected!');
 			if (robot.error) log(`Error: ${robot.error}`);
 		}
 	}
@@ -304,39 +306,86 @@
 				<h2 class="mb-3 text-xs font-semibold tracking-wider uppercase text-muted">
 					Robot Connection
 				</h2>
-				<div class="flex items-end gap-3">
-					<div class="flex-1">
-						<label for="robotIp" class="mb-1 block text-xs text-muted">Robot IP (local network)</label>
-						<input
-							id="robotIp"
-							bind:value={robotIp}
-							class="w-full rounded border border-line bg-surface px-3 py-2 text-sm text-default focus:border-accent focus:outline-none"
-						/>
+
+				{#if !robot.connected && robot.status === 'disconnected'}
+					<div class="mb-3 flex gap-2">
+						<button
+							onclick={() => (connectionMode = 'robot')}
+							class="flex-1 rounded-lg border px-3 py-2 text-sm transition
+								{connectionMode === 'robot'
+									? 'border-accent bg-accent-muted text-accent'
+									: 'border-line bg-surface text-secondary hover:bg-surface-hover'}"
+						>
+							Connect to Robot
+						</button>
+						<button
+							onclick={() => (connectionMode = 'dryrun')}
+							class="flex-1 rounded-lg border px-3 py-2 text-sm transition
+								{connectionMode === 'dryrun'
+									? 'border-accent bg-accent-muted text-accent'
+									: 'border-line bg-surface text-secondary hover:bg-surface-hover'}"
+						>
+							Dry Run
+						</button>
 					</div>
-					<button
-						onclick={toggleRtc}
-						class="rounded px-4 py-2 text-sm font-semibold {robot.connected
-							? 'bg-danger text-white hover:bg-red-600'
-							: 'bg-accent text-black hover:bg-accent-hover'}"
-					>
-						{robot.status === 'connecting' || robot.status === 'validating'
-							? 'Connecting...'
-							: robot.connected
-								? 'Disconnect'
-								: 'Connect'}
-					</button>
-				</div>
-				<div class="mt-2">
-					<span
-						class="rounded-full px-2 py-0.5 text-xs font-semibold {robot.connected
-							? 'bg-success-muted text-success'
-							: robot.status === 'connecting' || robot.status === 'validating'
-								? 'bg-warning-muted text-warning'
-								: 'bg-danger-muted text-danger'}"
-					>
-						WebRTC: {robot.status}
-					</span>
-				</div>
+				{/if}
+
+				{#if connectionMode === 'robot' && !robot.connected && robot.status === 'disconnected'}
+					<div class="flex items-end gap-3">
+						<div class="flex-1">
+							<label for="robotIp" class="mb-1 block text-xs text-muted">Robot IP (local network)</label>
+							<input
+								id="robotIp"
+								bind:value={robotIp}
+								class="w-full rounded border border-line bg-surface px-3 py-2 text-sm text-default focus:border-accent focus:outline-none"
+							/>
+						</div>
+						<button
+							onclick={toggleRtc}
+							class="rounded bg-accent px-4 py-2 text-sm font-semibold text-black hover:bg-accent-hover"
+						>
+							Connect
+						</button>
+					</div>
+				{:else if connectionMode === 'dryrun' && !robot.connected && robot.status === 'disconnected'}
+					<div class="flex items-center justify-between">
+						<p class="text-sm text-muted">
+							Simulate robot commands without physical hardware. Commands are acknowledged but not executed.
+						</p>
+						<button
+							onclick={toggleRtc}
+							class="ml-4 shrink-0 rounded bg-accent px-4 py-2 text-sm font-semibold text-black hover:bg-accent-hover"
+						>
+							Start Dry Run
+						</button>
+					</div>
+				{:else}
+					<div class="flex items-center justify-between">
+						<div>
+							<span
+								class="rounded-full px-2 py-0.5 text-xs font-semibold {robot.connected
+									? 'bg-success-muted text-success'
+									: 'bg-warning-muted text-warning'}"
+							>
+								{robot.connected
+									? connectionMode === 'dryrun' ? 'Dry Run Active' : 'Connected'
+									: robot.status === 'connecting' ? 'Connecting...' : 'Validating...'}
+							</span>
+							{#if robot.connected && connectionMode === 'robot'}
+								<span class="ml-2 text-sm text-muted">{robotIp}</span>
+							{/if}
+						</div>
+						{#if robot.connected}
+							<button
+								onclick={toggleRtc}
+								class="rounded bg-danger px-4 py-2 text-sm font-semibold text-white hover:bg-red-600"
+							>
+								Disconnect
+							</button>
+						{/if}
+					</div>
+				{/if}
+
 				{#if robot.error}
 					<p class="mt-2 text-sm text-danger">{robot.error}</p>
 				{/if}
