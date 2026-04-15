@@ -5,7 +5,7 @@ import { ChainListener } from "../chain/listener.js";
 import { COMMAND_SCHEMA_MAP } from "../robot/constants.js";
 import type { RobotConfig } from "../types/robot.js";
 import type { ChainConfig, OnChainCommand } from "../types/chain.js";
-import type { SportCommand } from "../types/commands.js";
+import { SportCommand } from "../types/commands.js";
 
 export interface OperatorNodeEvents {
   started: () => void;
@@ -80,16 +80,29 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     }
 
     try {
-      // Execute command on robot
       const params = cmd.parameters
         ? JSON.parse(cmd.parameters)
         : undefined;
-      this.connection.sportCommand(cmd.apiId as SportCommand, params);
 
-      // Wait for estimated command duration
-      const schema = COMMAND_SCHEMA_MAP.get(cmd.apiId);
-      if (schema && schema.estimatedDurationMs > 0) {
-        await sleep(schema.estimatedDurationMs);
+      // Move command with duration: send repeatedly then stop
+      if (cmd.apiId === SportCommand.Move && params?.duration_ms) {
+        const durationMs = params.duration_ms as number;
+        const moveParams = { x: params.x ?? 0, y: params.y ?? 0, z: params.z ?? 0 };
+        const endTime = Date.now() + durationMs;
+        while (Date.now() < endTime) {
+          this.connection.sportCommand(SportCommand.Move, moveParams);
+          await sleep(500);
+        }
+        this.connection.sportCommand(SportCommand.StopMove);
+      } else {
+        // Single command
+        this.connection.sportCommand(cmd.apiId as SportCommand, params);
+
+        // Wait for estimated command duration
+        const schema = COMMAND_SCHEMA_MAP.get(cmd.apiId);
+        if (schema && schema.estimatedDurationMs > 0) {
+          await sleep(schema.estimatedDurationMs);
+        }
       }
 
       await this.submitReceipt(cmd, true, "");

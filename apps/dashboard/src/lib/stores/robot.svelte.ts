@@ -6,9 +6,12 @@ class RobotConnectionState {
 	status = $state<RtcStatus>('disconnected');
 	error = $state<string | null>(null);
 
+	moving = $state(false);
+
 	private pc: RTCPeerConnection | null = null;
 	private dataChannel: RTCDataChannel | null = null;
 	private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+	private moveInterval: ReturnType<typeof setInterval> | null = null;
 	private onMessageCallbacks: Array<(msg: Record<string, unknown>) => void> = [];
 	private validationResolve: (() => void) | null = null;
 
@@ -63,6 +66,7 @@ class RobotConnectionState {
 	}
 
 	disconnect() {
+		this.stopMove();
 		if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
 		this.dataChannel?.close();
 		this.pc?.close();
@@ -84,6 +88,65 @@ class RobotConnectionState {
 				}
 			})
 		);
+	}
+
+	/** Send a G1 loco mode command (api_id 7101 with mode data) */
+	sendG1LocoCommand(modeId: number) {
+		this.sendCommand(7101, { data: modeId });
+	}
+
+	/** Send a G1 arm action (api_id 7106 with action data) */
+	sendG1ArmAction(actionId: number) {
+		if (!this.dataChannel || this.dataChannel.readyState !== 'open') return;
+		this.dataChannel.send(
+			JSON.stringify({
+				type: 'req',
+				topic: 'rt/api/arm/request',
+				data: {
+					header: { identity: { id: Date.now() % 2147483648, api_id: 7106 } },
+					parameter: JSON.stringify({ data: actionId })
+				}
+			})
+		);
+	}
+
+	/** Send G1 joystick input */
+	sendG1Joystick(lx: number, ly: number, rx: number, ry: number) {
+		if (!this.dataChannel || this.dataChannel.readyState !== 'open') return;
+		this.dataChannel.send(
+			JSON.stringify({
+				type: 'msg',
+				topic: 'rt/wirelesscontroller',
+				data: { lx, ly, rx, ry, keys: 0 }
+			})
+		);
+	}
+
+	/** Start continuous movement — sends command every 500ms until stopMove is called */
+	startMove(vx: number, vy: number, vyaw: number, robotType: string = 'go2_pro') {
+		this.stopMove(robotType);
+		this.moving = true;
+		const send = robotType === 'g1'
+			? () => this.sendG1Joystick(vx, vy, vyaw, 0)
+			: () => this.sendCommand(1008, { x: vx, y: vy, z: vyaw });
+		send();
+		this.moveInterval = setInterval(send, 500);
+	}
+
+	/** Stop continuous movement */
+	stopMove(robotType: string = 'go2_pro') {
+		if (this.moveInterval) {
+			clearInterval(this.moveInterval);
+			this.moveInterval = null;
+		}
+		if (this.moving) {
+			if (robotType === 'g1') {
+				this.sendG1Joystick(0, 0, 0, 0);
+			} else {
+				this.sendCommand(1003); // StopMove
+			}
+			this.moving = false;
+		}
 	}
 
 	private setupDataChannel() {

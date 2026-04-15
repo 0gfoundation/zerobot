@@ -59,12 +59,58 @@ const RECORDINGS_DIR = path.join(__dirname, "recordings", ROBOT_TYPE);
 interface RobotCommand {
   name: string;
   estimatedDurationMs: number;
+  /** If true, trigger is called repeatedly every 500ms and StopMove is sent after */
+  continuous?: boolean;
   /** How to trigger this command on the robot */
   trigger: (conn: Go2Connection) => void;
 }
 
-/** Go2 Pro commands — use the SDK's SportCommand enum */
-const GO2_COMMANDS: RobotCommand[] = COMMAND_SCHEMAS
+const MOVE_SPEED = 0.3;
+const MOVE_DURATION = 3000;
+const ROTATE_SPEED = 1.0;
+
+/** Go2 Pro movement commands — continuous velocity commands */
+const GO2_MOVEMENT_COMMANDS: RobotCommand[] = [
+  {
+    name: "MoveForward",
+    estimatedDurationMs: MOVE_DURATION,
+    continuous: true,
+    trigger: (conn) => conn.sportCommand(SportCommand.Move, { x: MOVE_SPEED, y: 0, z: 0 }),
+  },
+  {
+    name: "MoveBackward",
+    estimatedDurationMs: MOVE_DURATION,
+    continuous: true,
+    trigger: (conn) => conn.sportCommand(SportCommand.Move, { x: -MOVE_SPEED, y: 0, z: 0 }),
+  },
+  {
+    name: "MoveLeft",
+    estimatedDurationMs: MOVE_DURATION,
+    continuous: true,
+    trigger: (conn) => conn.sportCommand(SportCommand.Move, { x: 0, y: MOVE_SPEED, z: 0 }),
+  },
+  {
+    name: "MoveRight",
+    estimatedDurationMs: MOVE_DURATION,
+    continuous: true,
+    trigger: (conn) => conn.sportCommand(SportCommand.Move, { x: 0, y: -MOVE_SPEED, z: 0 }),
+  },
+  {
+    name: "RotateLeft",
+    estimatedDurationMs: MOVE_DURATION,
+    continuous: true,
+    trigger: (conn) => conn.sportCommand(SportCommand.Move, { x: 0, y: 0, z: ROTATE_SPEED }),
+  },
+  {
+    name: "RotateRight",
+    estimatedDurationMs: MOVE_DURATION,
+    continuous: true,
+    trigger: (conn) => conn.sportCommand(SportCommand.Move, { x: 0, y: 0, z: -ROTATE_SPEED }),
+  },
+];
+
+/** Go2 Pro action commands — single-fire sport commands */
+const GO2_ACTION_COMMANDS: RobotCommand[] = COMMAND_SCHEMAS
   .filter((s) => s.estimatedDurationMs > 0)
   .map((s) => ({
     name: s.name,
@@ -82,6 +128,8 @@ const GO2_COMMANDS: RobotCommand[] = COMMAND_SCHEMAS
       conn.sportCommand(s.apiId as SportCommand, params);
     },
   }));
+
+const GO2_COMMANDS: RobotCommand[] = [...GO2_MOVEMENT_COMMANDS, ...GO2_ACTION_COMMANDS];
 
 /** G1 Basic loco mode commands — sent to rt/api/sport/request with different api_ids */
 const G1_LOCO_COMMANDS: RobotCommand[] = [
@@ -154,7 +202,47 @@ const G1_ARM_COMMANDS: RobotCommand[] = [
   trigger: (conn) => sendG1ArmAction(conn, a.action),
 }));
 
-const G1_COMMANDS: RobotCommand[] = [...G1_LOCO_COMMANDS, ...G1_ARM_COMMANDS];
+/** G1 Basic movement commands — continuous via joystick input */
+const G1_MOVEMENT_COMMANDS: RobotCommand[] = [
+  {
+    name: "MoveForward",
+    estimatedDurationMs: MOVE_DURATION,
+    continuous: true,
+    trigger: (conn) => sendG1Joystick(conn, MOVE_SPEED, 0, 0, 0),
+  },
+  {
+    name: "MoveBackward",
+    estimatedDurationMs: MOVE_DURATION,
+    continuous: true,
+    trigger: (conn) => sendG1Joystick(conn, -MOVE_SPEED, 0, 0, 0),
+  },
+  {
+    name: "MoveLeft",
+    estimatedDurationMs: MOVE_DURATION,
+    continuous: true,
+    trigger: (conn) => sendG1Joystick(conn, 0, MOVE_SPEED, 0, 0),
+  },
+  {
+    name: "MoveRight",
+    estimatedDurationMs: MOVE_DURATION,
+    continuous: true,
+    trigger: (conn) => sendG1Joystick(conn, 0, -MOVE_SPEED, 0, 0),
+  },
+  {
+    name: "RotateLeft",
+    estimatedDurationMs: MOVE_DURATION,
+    continuous: true,
+    trigger: (conn) => sendG1Joystick(conn, 0, 0, ROTATE_SPEED, 0),
+  },
+  {
+    name: "RotateRight",
+    estimatedDurationMs: MOVE_DURATION,
+    continuous: true,
+    trigger: (conn) => sendG1Joystick(conn, 0, 0, -ROTATE_SPEED, 0),
+  },
+];
+
+const G1_COMMANDS: RobotCommand[] = [...G1_MOVEMENT_COMMANDS, ...G1_LOCO_COMMANDS, ...G1_ARM_COMMANDS];
 
 const ALL_COMMANDS: Record<string, RobotCommand[]> = {
   go2: GO2_COMMANDS,
@@ -212,6 +300,15 @@ function sendG1ArmAction(conn: Go2Connection, actionId: number): void {
       },
       parameter: JSON.stringify({ data: actionId }),
     },
+  });
+  (conn as any).sendRaw(msg);
+}
+
+function sendG1Joystick(conn: Go2Connection, lx: number, ly: number, rx: number, ry: number): void {
+  const msg = JSON.stringify({
+    type: "msg",
+    topic: "rt/wirelesscontroller",
+    data: { lx, ly, rx, ry, keys: 0 },
   });
   (conn as any).sendRaw(msg);
 }
@@ -355,10 +452,24 @@ async function main(): Promise<void> {
     recording = true;
 
     // Trigger the command
-    cmd.trigger(conn);
-
-    // Wait for completion + buffer
-    await sleep(cmd.estimatedDurationMs + EXTRA_TIME);
+    if (cmd.continuous) {
+      // Continuous command: send repeatedly every 500ms, then stop
+      const endTime = Date.now() + cmd.estimatedDurationMs;
+      while (Date.now() < endTime) {
+        cmd.trigger(conn);
+        await sleep(500);
+      }
+      // Send StopMove for Go2, or zero joystick for G1
+      if (ROBOT_TYPE === "go2") {
+        conn.sportCommand(SportCommand.StopMove);
+      } else {
+        sendG1Joystick(conn, 0, 0, 0, 0);
+      }
+      await sleep(EXTRA_TIME);
+    } else {
+      cmd.trigger(conn);
+      await sleep(cmd.estimatedDurationMs + EXTRA_TIME);
+    }
 
     // Stop recording
     recording = false;
