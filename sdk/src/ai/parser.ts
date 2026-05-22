@@ -1,4 +1,4 @@
-import { COMMAND_NAME_MAP } from "../robot/constants.js";
+import { COMMAND_NAME_MAP } from "../command/schemas.js";
 import type { CommandPayload, SportCommand } from "../types/commands.js";
 
 export interface RawAICommand {

@@ -1,4 +1,4 @@
-import { startMockRobot } from '@0g-foundation/zerobot-sdk';
+import { startMockRobot } from '@0g-foundation/zerobot-sdk/mock';
 
 // Start the mock robot server for dry-run mode.
 // Runs on a separate port so it doesn't conflict with SvelteKit.

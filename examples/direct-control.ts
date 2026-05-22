@@ -5,7 +5,8 @@
  *   ROBOT_IP=192.168.123.18 npx tsx direct-control.ts
  */
 import "dotenv/config";
-import { Go2Connection, SportCommand } from "@0g-foundation/zerobot-sdk";
+import { Go2Connection } from "@0g-foundation/zerobot-sdk/robot";
+import { SportCommand } from "@0g-foundation/zerobot-sdk";
 
 const ROBOT_IP = process.env.ROBOT_IP || "192.168.123.18";
 

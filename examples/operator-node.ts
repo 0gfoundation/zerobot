@@ -6,7 +6,7 @@
  *   npx tsx operator-node.ts
  */
 import "dotenv/config";
-import { OperatorNode } from "@0g-foundation/zerobot-sdk";
+import { OperatorNode } from "@0g-foundation/zerobot-sdk/operator";
 
 const {
   ROBOT_IP = "192.168.123.18",

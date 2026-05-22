@@ -22,7 +22,4 @@ export {
 export {
   DataChannelType,
   RtcTopic,
-  COMMAND_SCHEMAS,
-  COMMAND_SCHEMA_MAP,
-  COMMAND_NAME_MAP,
 } from "./constants.js";

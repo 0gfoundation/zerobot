@@ -17,11 +17,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   Go2Connection,
+  RtcTopic,
+  DataChannelType,
+} from "@0g-foundation/zerobot-sdk/robot";
+import {
   SportCommand,
   COMMAND_SCHEMAS,
   COMMAND_NAME_MAP,
-  RtcTopic,
-  DataChannelType,
 } from "@0g-foundation/zerobot-sdk";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

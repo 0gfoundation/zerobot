@@ -2,7 +2,7 @@ import { EventEmitter } from "eventemitter3";
 import { Go2Connection } from "../robot/connection.js";
 import { ChainClient } from "../chain/client.js";
 import { ChainListener } from "../chain/listener.js";
-import { COMMAND_SCHEMA_MAP } from "../robot/constants.js";
+import { COMMAND_SCHEMA_MAP } from "../command/schemas.js";
 import type { RobotConfig } from "../types/robot.js";
 import type { ChainConfig, OnChainCommand } from "../types/chain.js";
 import { SportCommand } from "../types/commands.js";

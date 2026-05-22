@@ -1,4 +1,4 @@
-import { COMMAND_SCHEMAS } from "../robot/constants.js";
+import { COMMAND_SCHEMAS } from "../command/schemas.js";
 
 /**
  * Build the system prompt for LLM inference that converts

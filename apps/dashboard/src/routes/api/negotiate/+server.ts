@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { Go2Signaling } from '@0g-foundation/zerobot-sdk';
+import { Go2Signaling } from '@0g-foundation/zerobot-sdk/robot';
 
 export const POST: RequestHandler = async ({ request }) => {
 	const { robotIp, sdpOffer, token } = await request.json();

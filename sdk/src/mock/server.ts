@@ -16,7 +16,7 @@ import {
   generateAesKey,
 } from "../robot/crypto.js";
 import { computeValidationResponse } from "../robot/crypto.js";
-import { COMMAND_SCHEMA_MAP } from "../robot/constants.js";
+import { COMMAND_SCHEMA_MAP } from "../command/schemas.js";
 
 // ---- RSA Key Pair (generated once at startup) ----
 

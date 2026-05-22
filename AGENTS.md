@@ -56,12 +56,25 @@ User/Controller → Smart Contract (dispatchCommand) → CommandDispatched event
     → OperatorNode submits execution receipt back on-chain
 ```
 
+### SDK Public Entry Points
+
+The SDK exposes four entry points (see `exports` in `sdk/package.json`), split along the chain / robot / bridge seam so the root entry stays safe to bundle for the browser:
+
+- **`.` (root)** — control plane for dApps issuing commands on-chain: `ChainClient`, `ChainListener`, `Commander`, `AIBroker`, command schemas, all types. **Browser-bundle-safe** — no static `node:` imports.
+- **`./robot`** — robot transport: `Go2Connection`, `Go2Signaling`, `Heartbeat`, command message builders, crypto, `DataChannelType`, `RtcTopic`. Node-side (pulls in `node:module` via the WebRTC provider).
+- **`./operator`** — `OperatorNode`, the chain↔robot bridge. Node-only.
+- **`./mock`** — `startMockRobot`, an in-process mock Go2 server for dry-run/testing. Node-only (`node:http`).
+
+**Seam invariant:** the root barrel (`sdk/src/index.ts`) must never import the `robot`/`operator`/`mock` barrels or any `node:`-importing module, even transitively — it imports `Commander` and the command schemas from `./command` *directly*, not via the `robot` or `controller`-style barrels. Re-exporting Node-only code from root would silently break browser bundling. When adding a module, classify its runtime, wire it to the right entry, and add any new public entry to the `exports` map.
+
 ### SDK Modules (`sdk/src/`)
 
-- **`robot/`** — WebRTC connection to Go2 Pro. Key flow: SDP signaling (with AES-ECB/RSA crypto) → data channel → MD5 validation handshake → 2s heartbeat. Commands are JSON over the data channel with double-serialized `parameter` field.
-- **`chain/`** — Ethers.js wrappers for RobotRegistry and RobotCommandDispatcher contracts. `ChainListener` watches for events via subscription with polling fallback.
-- **`ai/`** — Resolves natural language prompts to command sequences via 0G Compute (OpenAI-compatible API). System prompt is built dynamically from `COMMAND_SCHEMAS`.
-- **`controller/`** — `OperatorNode` orchestrates chain→robot. `Commander` sends commands to chain.
+- **`chain/`** — Ethers.js wrappers for RobotRegistry and RobotCommandDispatcher contracts. `ChainListener` watches for events via subscription with polling fallback. Isomorphic.
+- **`command/`** — command-abstraction layer: `Commander` (sends commands to chain) plus the command vocabulary (`COMMAND_SCHEMAS`, `COMMAND_SCHEMA_MAP`, `COMMAND_NAME_MAP`). Isomorphic. Backs the root entry.
+- **`robot/`** — WebRTC connection to Go2 Pro. Key flow: SDP signaling (with AES-ECB/RSA crypto) → data channel → MD5 validation handshake → 2s heartbeat. Commands are JSON over the data channel with double-serialized `parameter` field. Robot-protocol constants (`DataChannelType`, `RtcTopic`, AES keys) live in `robot/constants.ts`.
+- **`operator/`** — `OperatorNode` orchestrates chain→robot (the only module that imports from both the chain and robot planes).
+- **`ai/`** — Resolves natural language prompts to command sequences via 0G Compute (OpenAI-compatible API). System prompt is built dynamically from `COMMAND_SCHEMAS`. `AIBroker` is bundle-safe (dynamic import) but needs a Node runtime plus the optional `@0glabs/0g-serving-broker` peer dep at call time.
+- **`mock/`** — in-process mock Go2 server emulating the signaling, validation, and command-ack flow.
 
 ### Dashboard (`apps/dashboard/src/`)
 

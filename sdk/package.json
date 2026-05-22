@@ -4,6 +4,12 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./robot": { "types": "./dist/robot/index.d.ts", "default": "./dist/robot/index.js" },
+    "./operator": { "types": "./dist/operator/index.d.ts", "default": "./dist/operator/index.js" },
+    "./mock": { "types": "./dist/mock/index.d.ts", "default": "./dist/mock/index.js" }
+  },
   "files": ["dist"],
   "scripts": {
     "build": "tsc",
