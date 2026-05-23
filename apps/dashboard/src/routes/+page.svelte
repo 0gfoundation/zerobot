@@ -3,10 +3,12 @@
 	import { robot } from '$lib/stores/robot.svelte';
 	import { network } from '$lib/stores/network.svelte';
 	import RobotViewer from '$lib/components/RobotViewer.svelte';
-	import { REGISTRY_ABI } from '$lib/contracts/abis';
+	import { getChainClient } from '$lib/chain';
 	import { keccak256, toBytes } from 'viem';
-	import { getPublicClient } from '@wagmi/core';
-	import { getConfig } from '$lib/wagmi';
+
+	/** bytes32 placeholder for "no storage root yet". */
+	const ZERO_STORAGE_ROOT =
+		'0x0000000000000000000000000000000000000000000000000000000000000000' as const;
 
 	// --- Robot management state ---
 	let robots = $state<
@@ -67,49 +69,15 @@
 		robots = [];
 
 		try {
-			const client = getPublicClient(getConfig(), { chainId: network.chainId });
-			const logs = await client.getLogs({
-				address: network.contracts.registry,
-				event: {
-					type: 'event',
-					name: 'RobotRegistered',
-					inputs: [
-						{ name: 'robotId', type: 'bytes32', indexed: true },
-						{ name: 'owner', type: 'address', indexed: true },
-						{ name: 'name', type: 'string', indexed: false },
-						{ name: 'robotType', type: 'string', indexed: false }
-					]
-				},
-				args: { owner: wallet.address },
-				fromBlock: 0n
-			});
-
-			const results = [];
-			for (const entry of logs) {
-				const robotId = entry.args.robotId!;
-				const data = (await client.readContract({
-					address: network.contracts.registry,
-					abi: REGISTRY_ABI,
-					functionName: 'getRobot',
-					args: [robotId]
-				})) as {
-					owner: string;
-					name: string;
-					robotType: string;
-					storageRoot: string;
-					active: boolean;
-					registeredAt: bigint;
-				};
-
-				results.push({
-					robotId,
-					name: data.name,
-					robotType: data.robotType,
-					active: data.active,
-					registeredAt: data.registeredAt
-				});
-			}
-			robots = results;
+			const chain = await getChainClient();
+			const records = await chain.listRobotsByOwner(wallet.address);
+			robots = records.map((r) => ({
+				robotId: r.robotId as `0x${string}`,
+				name: r.name,
+				robotType: r.robotType,
+				active: r.active,
+				registeredAt: r.registeredAt
+			}));
 			log(`Found ${robots.length} robot(s)`);
 		} catch (err: any) {
 			log(`Failed to load robots: ${err.message}`);
@@ -121,44 +89,27 @@
 	async function registerRobot() {
 		if (!newRobotName.trim()) return;
 		registering = true;
-		const robotId = keccak256(toBytes(newRobotName.trim()));
+		const name = newRobotName.trim();
+		const robotId = keccak256(toBytes(name));
 
 		try {
-			// Check if robot ID already exists
-			const publicClient = getPublicClient(getConfig(), { chainId: network.chainId });
-			const existing = (await publicClient.readContract({
-				address: network.contracts.registry,
-				abi: REGISTRY_ABI,
-				functionName: 'getRobot',
-				args: [robotId]
-			})) as { owner: string };
+			const chain = await getChainClient();
 
-			if (existing.owner !== '0x0000000000000000000000000000000000000000') {
-				log(`A robot with the name "${newRobotName}" is already registered. Choose a different name.`);
-				registering = false;
-				return;
-			}
-		} catch {
-			// getRobot failed — likely doesn't exist, proceed
-		}
-
-		log(`Registering "${newRobotName}" (${robotId.slice(0, 18)}...)...`);
-
-		try {
-			const hash = await wallet.writeContract({
-				address: network.contracts.registry,
-				abi: REGISTRY_ABI,
-				functionName: 'registerRobot',
-				args: [robotId, newRobotName.trim(), newRobotType, '0x0000000000000000000000000000000000000000000000000000000000000000']
-			});
-			log(`Tx: ${hash}`);
-			log('Waiting for confirmation...');
+			// Pre-flight: is this robotId already taken?
 			try {
-				await wallet.waitForReceipt(hash);
-				log('Robot registered!');
+				const existing = await chain.getRobot(robotId);
+				if (existing.owner !== '0x0000000000000000000000000000000000000000') {
+					log(`A robot with the name "${name}" is already registered. Choose a different name.`);
+					return;
+				}
 			} catch {
-				log('Confirmation timed out — the transaction may still be processing. Reloading...');
+				// getRobot reverted — robot doesn't exist; proceed with registration
 			}
+
+			log(`Registering "${name}" (${robotId.slice(0, 18)}...)...`);
+			const receipt = await chain.registerRobot(robotId, name, newRobotType, ZERO_STORAGE_ROOT);
+			log(receipt?.hash ? `Tx: ${receipt.hash}` : 'Tx submitted');
+			log('Robot registered!');
 			newRobotName = '';
 			await loadRobots();
 		} catch (err: any) {
@@ -171,18 +122,9 @@
 	async function toggleActive(robotId: `0x${string}`, currentlyActive: boolean) {
 		try {
 			log(currentlyActive ? 'Deactivating...' : 'Activating...');
-			const hash = await wallet.writeContract({
-				address: network.contracts.registry,
-				abi: REGISTRY_ABI,
-				functionName: 'updateRobot',
-				args: [robotId, '0x0000000000000000000000000000000000000000000000000000000000000000', !currentlyActive]
-			});
-			try {
-				await wallet.waitForReceipt(hash);
-				log(currentlyActive ? 'Deactivated' : 'Activated');
-			} catch {
-				log('Confirmation timed out — reloading...');
-			}
+			const chain = await getChainClient();
+			await chain.updateRobot(robotId, ZERO_STORAGE_ROOT, !currentlyActive);
+			log(currentlyActive ? 'Deactivated' : 'Activated');
 			await loadRobots();
 		} catch (err: any) {
 			log(`Failed: ${err.shortMessage || err.message}`);

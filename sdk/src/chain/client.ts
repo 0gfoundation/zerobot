@@ -179,4 +179,28 @@ export class ChainClient {
   async getCommandPrice(robotId: string): Promise<bigint> {
     return this.registry.getCommandPrice(robotId);
   }
+
+  /**
+   * List all robots registered to a given owner address. Queries the
+   * RobotRegistered event log filtered by owner, then fetches the current
+   * Robot record for each so the returned data reflects post-registration
+   * updates (name/type can't change, but `active` and `storageRoot` can).
+   */
+  async listRobotsByOwner(
+    owner: string,
+  ): Promise<Array<Robot & { robotId: string }>> {
+    const filter = this.registry.filters.RobotRegistered(null, owner);
+    const events = await this.registry.queryFilter(filter);
+    const robotIds = events.map((e) => {
+      // ethers v6 returns EventLog with parsed args; cast for typing
+      const log = e as ethers.EventLog;
+      return log.args.robotId as string;
+    });
+    return Promise.all(
+      robotIds.map(async (robotId) => ({
+        robotId,
+        ...(await this.getRobot(robotId)),
+      })),
+    );
+  }
 }
