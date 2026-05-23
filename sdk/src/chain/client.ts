@@ -2,6 +2,7 @@ import { ethers, type ContractTransactionReceipt } from "ethers";
 import type { ChainConfig } from "../types/chain.js";
 import type { CommandPayload } from "../types/commands.js";
 import { REGISTRY_ABI, DISPATCHER_ABI } from "./abis.js";
+import { walletClientToSigner } from "./adapter.js";
 
 /**
  * Client for interacting with the 0G Robot smart contracts.
@@ -15,12 +16,17 @@ export class ChainClient {
   constructor(config: ChainConfig) {
     this.provider = new ethers.JsonRpcProvider(config.rpcUrl);
 
+    // Precedence: explicit ethers Signer > viem WalletClient (adapted) > privateKey.
     if (config.signer) {
       this.signer = config.signer;
+    } else if (config.walletClient) {
+      this.signer = walletClientToSigner(config.walletClient);
     } else if (config.privateKey) {
       this.signer = new ethers.Wallet(config.privateKey, this.provider);
     } else {
-      throw new Error("Either signer or privateKey must be provided");
+      throw new Error(
+        "ChainConfig must provide one of: signer, walletClient, or privateKey",
+      );
     }
 
     this.registry = new ethers.Contract(

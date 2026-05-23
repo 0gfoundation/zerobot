@@ -7,6 +7,10 @@
 export { ChainClient, ChainListener } from "./chain/index.js";
 export type { ChainListenerEvents } from "./chain/index.js";
 
+// Wallet-library interop — consumers may pass `ChainConfig.walletClient`
+// directly, or convert a viem WalletClient to an ethers Signer explicitly.
+export { walletClientToSigner } from "./chain/adapter.js";
+
 // Commands — origination + vocabulary
 export {
   Commander,

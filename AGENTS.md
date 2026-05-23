@@ -119,6 +119,7 @@ G1 uses `LocoClient` (not `SportClient`) with different API IDs and topics (`rt/
 - **WebRTC crypto:** Robot requires AES-256-ECB and RSA PKCS1-V1.5 (not available in SubtleCrypto). SDK uses `node-forge` (pure JS, works in Node + browser).
 - **Firmware >=1.1.8:** `con_notify` response is AES-GCM encrypted with a hardcoded key before the RSA public key can be extracted.
 - **`@roamhq/wrtc`:** Only working Node.js WebRTC implementation. Optional peer dep — not needed in browser.
+- **Wallet-library interop:** `ChainConfig` accepts either an ethers `Signer`, a viem `WalletClient` (e.g. from wagmi), or a raw `privateKey`. The SDK uses ethers internally — required by `@0glabs/0g-serving-broker` — and adapts viem inputs via `walletClientToSigner` (`sdk/src/chain/adapter.ts`). The adapter reads `account`/`chain`/`transport` structurally and uses only ethers at runtime, so viem is an **optional peer dep** with a type-only import: it is never bundled, and ethers-only consumers do not need it installed.
 - **Contract ABIs in dashboard:** Hand-written in `abis.ts`, not auto-generated. When contract interfaces change, update manually. Struct returns must use `tuple` with `components`.
 - **Wallet error handling:** MetaMask errors can be plain objects `{code, message}` (not `Error` instances) or deeply nested via `cause`. `getFullErrorText()` in wallet store recursively extracts error text.
 
