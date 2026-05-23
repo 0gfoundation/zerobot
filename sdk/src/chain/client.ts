@@ -1,5 +1,5 @@
 import { ethers, type ContractTransactionReceipt } from "ethers";
-import type { ChainConfig } from "../types/chain.js";
+import type { ChainConfig, Robot } from "../types/chain.js";
 import type { CommandPayload } from "../types/commands.js";
 import { REGISTRY_ABI, DISPATCHER_ABI } from "./abis.js";
 import { walletClientToSigner } from "./adapter.js";
@@ -43,14 +43,25 @@ export class ChainClient {
 
   async registerRobot(
     robotId: string,
+    name: string,
     robotType: string,
-    metadataURI: string,
+    storageRoot: string,
   ): Promise<ContractTransactionReceipt | null> {
     const tx = await this.registry.registerRobot(
       robotId,
+      name,
       robotType,
-      metadataURI,
+      storageRoot,
     );
+    return tx.wait();
+  }
+
+  async updateRobot(
+    robotId: string,
+    storageRoot: string,
+    active: boolean,
+  ): Promise<ContractTransactionReceipt | null> {
+    const tx = await this.registry.updateRobot(robotId, storageRoot, active);
     return tx.wait();
   }
 
@@ -146,5 +157,26 @@ export class ChainClient {
 
   async isAuthorized(robotId: string, address: string): Promise<boolean> {
     return this.registry.isAuthorized(robotId, address);
+  }
+
+  /**
+   * Read a robot's record from the registry. Returns the canonical struct
+   * shape; ethers gives back a tuple-indexed Result, which we normalize into
+   * a plain object so consumers can destructure by field name reliably.
+   */
+  async getRobot(robotId: string): Promise<Robot> {
+    const r = await this.registry.getRobot(robotId);
+    return {
+      owner: r.owner,
+      name: r.name,
+      robotType: r.robotType,
+      storageRoot: r.storageRoot,
+      active: r.active,
+      registeredAt: r.registeredAt,
+    };
+  }
+
+  async getCommandPrice(robotId: string): Promise<bigint> {
+    return this.registry.getCommandPrice(robotId);
   }
 }

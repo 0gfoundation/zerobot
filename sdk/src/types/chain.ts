@@ -28,6 +28,17 @@ export interface OnChainCommand {
   timestamp: bigint;
 }
 
+/** Robot record as stored in RobotRegistry. */
+export interface Robot {
+  owner: string;
+  name: string;
+  robotType: string;
+  /** `bytes32` reference into 0G Storage (or zero if unused). */
+  storageRoot: string;
+  active: boolean;
+  registeredAt: bigint;
+}
+
 export const GALILEO_TESTNET = {
   rpcUrl: "https://evmrpc-testnet.0g.ai",
   chainId: 16602,
