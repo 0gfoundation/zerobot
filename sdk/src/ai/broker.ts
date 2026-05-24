@@ -3,6 +3,7 @@ import { buildSystemPrompt } from "./prompt.js";
 import { parseLLMResponse } from "./parser.js";
 import type { CommandPayload } from "../types/commands.js";
 import type { AIConfig } from "../types/ai.js";
+import { resolveSigner } from "../chain/adapter.js";
 
 /**
  * AI broker for resolving natural language prompts into robot commands
@@ -13,15 +14,16 @@ import type { AIConfig } from "../types/ai.js";
  */
 export class AIBroker {
   private broker: any; // 0g-serving-broker instance
+  private signer: Signer;
   private providerAddress: string | null = null;
   private serviceUrl: string | null = null;
   private model: string;
   private systemPrompt: string;
 
-  constructor(
-    private signer: Signer,
-    config: AIConfig = {},
-  ) {
+  constructor(config: AIConfig) {
+    // Resolve the wallet input the same way ChainConfig does — accept
+    // an ethers Signer, a viem WalletClient, or a privateKey + rpcUrl.
+    this.signer = resolveSigner(config, "AIConfig");
     this.model = config.model ?? "qwen-2.5-7b-instruct";
     this.systemPrompt = buildSystemPrompt();
     if (config.providerAddress) {

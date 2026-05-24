@@ -7,13 +7,7 @@
  * Requires: 0G Compute funds deposited via @0glabs/0g-serving-broker
  */
 import "dotenv/config";
-import { ethers } from "ethers";
-import {
-  AIBroker,
-  Commander,
-  parseLLMResponse,
-  buildSystemPrompt,
-} from "@0g-foundation/zerobot-sdk";
+import { AIBroker, Commander } from "@0g-foundation/zerobot-sdk";
 
 const {
   RPC_URL = "https://evmrpc-testnet.0g.ai",
@@ -39,11 +33,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  const provider = new ethers.JsonRpcProvider(RPC_URL);
-  const signer = new ethers.Wallet(PRIVATE_KEY!, provider);
-
   console.log("Initializing 0G Compute AI broker...");
-  const aiBroker = new AIBroker(signer);
+  const aiBroker = new AIBroker({ privateKey: PRIVATE_KEY, rpcUrl: RPC_URL });
   await aiBroker.initialize();
 
   console.log(`Resolving prompt: "${prompt}"`);

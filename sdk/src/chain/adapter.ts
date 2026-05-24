@@ -1,4 +1,11 @@
-import { BrowserProvider, JsonRpcSigner } from "ethers";
+import {
+  BrowserProvider,
+  JsonRpcProvider,
+  JsonRpcSigner,
+  Wallet,
+  type Provider,
+  type Signer,
+} from "ethers";
 import type { WalletClient } from "viem";
 
 /**
@@ -40,4 +47,47 @@ export function walletClientToSigner(walletClient: WalletClient): JsonRpcSigner 
   // the same protocol, so it accepts it as the underlying request handler.
   const provider = new BrowserProvider(transport, network);
   return new JsonRpcSigner(provider, account.address);
+}
+
+/**
+ * Shape of the wallet-resolution inputs accepted by SDK entry points
+ * (`ChainConfig`, `AIConfig`). Consumers provide exactly one of `signer`,
+ * `walletClient`, or `privateKey`; `rpcUrl` is required only for the
+ * `privateKey` path so a `JsonRpcProvider` can be built.
+ */
+export interface WalletConfig {
+  rpcUrl?: string;
+  signer?: Signer;
+  walletClient?: WalletClient;
+  privateKey?: string;
+}
+
+/**
+ * Resolve a `WalletConfig` to an ethers `Signer`. `context` is included in
+ * thrown error messages so consumers can tell which entry point misconfigured
+ * its wallet (e.g. `"ChainConfig"`, `"AIConfig"`). When the caller already
+ * has a `Provider` for the same RPC, pass it as `fallbackProvider` so the
+ * `privateKey` path doesn't construct a redundant one.
+ */
+export function resolveSigner(
+  config: WalletConfig,
+  context = "wallet config",
+  fallbackProvider?: Provider,
+): Signer {
+  if (config.signer) return config.signer;
+  if (config.walletClient) return walletClientToSigner(config.walletClient);
+  if (config.privateKey) {
+    const provider =
+      fallbackProvider ??
+      (config.rpcUrl ? new JsonRpcProvider(config.rpcUrl) : undefined);
+    if (!provider) {
+      throw new Error(
+        `${context}: rpcUrl is required when providing privateKey`,
+      );
+    }
+    return new Wallet(config.privateKey, provider);
+  }
+  throw new Error(
+    `${context}: must provide one of signer, walletClient, or privateKey`,
+  );
 }
