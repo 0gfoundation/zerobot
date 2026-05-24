@@ -82,7 +82,7 @@ The SDK exposes four entry points (see `exports` in `sdk/package.json`), split a
 - **`lib/stores/`** — Class-based reactive state: `wallet.svelte.ts` (wagmi wallet), `robot.svelte.ts` (WebRTC connection), `network.svelte.ts` (chain selection)
 - **`lib/networks.ts`** — Network definitions with per-network contract addresses. Adding a network = adding an entry here.
 - **`routes/api/negotiate/`** — SvelteKit server endpoint proxying SDP exchange to robot (browser can't reach robot directly due to CORS)
-- **`lib/contracts/abis.ts`** — Hand-maintained ABIs. `getRobot` returns a struct (ABI `tuple` with `components`), not flat outputs.
+- **`lib/chain.ts`** — `getChainClient()` factory: builds a fresh `ChainClient` from the current wagmi `walletClient` + active network on each call. The dashboard performs all on-chain operations through the SDK; there are no duplicate ABIs or contract wrappers in the dashboard.
 
 ### Smart Contracts
 
@@ -120,7 +120,7 @@ G1 uses `LocoClient` (not `SportClient`) with different API IDs and topics (`rt/
 - **Firmware >=1.1.8:** `con_notify` response is AES-GCM encrypted with a hardcoded key before the RSA public key can be extracted.
 - **`@roamhq/wrtc`:** Only working Node.js WebRTC implementation. Optional peer dep — not needed in browser.
 - **Wallet-library interop:** `ChainConfig` accepts either an ethers `Signer`, a viem `WalletClient` (e.g. from wagmi), or a raw `privateKey`. The SDK uses ethers internally — required by `@0glabs/0g-serving-broker` — and adapts viem inputs via `walletClientToSigner` (`sdk/src/chain/adapter.ts`). The adapter reads `account`/`chain`/`transport` structurally and uses only ethers at runtime, so viem is an **optional peer dep** with a type-only import: it is never bundled, and ethers-only consumers do not need it installed.
-- **Contract ABIs in dashboard:** Hand-written in `abis.ts`, not auto-generated. When contract interfaces change, update manually. Struct returns must use `tuple` with `components`.
+- **Contract ABIs:** Live only in `sdk/src/chain/abis.ts` (auto-generated from contract artifacts — header line says so; do not edit by hand). The dashboard consumes contracts via the SDK's `ChainClient`, so there is no second copy of the ABIs to keep in sync. When contract interfaces change: regenerate `sdk/src/chain/abis.ts`, then update the corresponding TypeScript wrappers in `sdk/src/chain/client.ts` (and add a `types/chain.ts` entry if a new struct is involved). Struct returns must use `tuple` with `components`.
 - **Wallet error handling:** MetaMask errors can be plain objects `{code, message}` (not `Error` instances) or deeply nested via `cause`. `getFullErrorText()` in wallet store recursively extracts error text.
 
 ## Deployed Contracts (Galileo Testnet)
