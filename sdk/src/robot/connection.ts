@@ -186,6 +186,17 @@ export class Go2Connection extends EventEmitter<Go2ConnectionEvents> {
   }
 
   /**
+   * Escape hatch for sending arbitrary topic messages over the data channel —
+   * use for protocol surfaces the SDK hasn't codified into typed helpers yet
+   * (e.g. G1-specific topics like `rt/api/arm/request`, `rt/wirelesscontroller`,
+   * or new sport `api_id`s not yet enumerated). For known message types prefer
+   * `sportCommand` / `vuiCommand` / `motionSwitcherCommand` / `subscribe`.
+   */
+  sendMessage(message: Record<string, unknown>): void {
+    this.sendRaw(JSON.stringify(message));
+  }
+
+  /**
    * Disconnect from the robot and clean up.
    */
   async disconnect(): Promise<void> {

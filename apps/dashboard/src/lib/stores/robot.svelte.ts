@@ -1,19 +1,26 @@
-import { md5 } from '$lib/utils/md5';
+import { Go2Connection } from '@0g-foundation/zerobot-sdk/robot';
+
+/**
+ * Reactive wrapper around the SDK's `Go2Connection`. The store owns the
+ * Svelte-runes UI state (status, error, hold-to-move loop) and delegates
+ * everything WebRTC-shaped — peer connection, data channel, validation
+ * handshake, heartbeat, sport commands — to the SDK.
+ *
+ * SDP exchange goes through `/api/negotiate` (a SvelteKit server endpoint)
+ * via the SDK's `signalingProxyUrl` option, because the robot's local-network
+ * signaling endpoint can't be reached cross-origin from the browser.
+ */
 
 type RtcStatus = 'disconnected' | 'connecting' | 'validating' | 'connected';
 
 class RobotConnectionState {
 	status = $state<RtcStatus>('disconnected');
 	error = $state<string | null>(null);
-
 	moving = $state(false);
 
-	private pc: RTCPeerConnection | null = null;
-	private dataChannel: RTCDataChannel | null = null;
-	private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+	private conn: Go2Connection | null = null;
 	private moveInterval: ReturnType<typeof setInterval> | null = null;
 	private onMessageCallbacks: Array<(msg: Record<string, unknown>) => void> = [];
-	private validationResolve: (() => void) | null = null;
 
 	connected = $derived(this.status === 'connected');
 
@@ -26,114 +33,92 @@ class RobotConnectionState {
 
 	async connect(robotIp: string) {
 		this.error = null;
-		this.status = 'connecting';
+		const conn = new Go2Connection({
+			ip: robotIp,
+			signalingProxyUrl: '/api/negotiate'
+		});
+		this.conn = conn;
+
+		// Mirror SDK status into our local state. The SDK's lifecycle goes
+		// disconnected → connecting → validating → connected (then error on failure);
+		// we only surface the subset our UI cares about.
+		conn.on('status', (s) => {
+			if (s === 'connecting' || s === 'validating' || s === 'connected' || s === 'disconnected') {
+				this.status = s;
+			}
+		});
+		conn.on('message', (msg) => {
+			for (const cb of this.onMessageCallbacks) cb(msg);
+		});
+		conn.on('error', (err) => {
+			this.error = err.message;
+		});
 
 		try {
-			this.pc = new RTCPeerConnection({ sdpSemantics: 'unified-plan' } as any);
-			this.dataChannel = this.pc.createDataChannel('data', { ordered: true });
-			this.pc.addTransceiver('video', { direction: 'recvonly' });
-			this.pc.addTransceiver('audio', { direction: 'sendrecv' });
-
-			this.setupDataChannel();
-
-			const offer = await this.pc.createOffer();
-			await this.pc.setLocalDescription(offer);
-
-			const resp = await fetch('/api/negotiate', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ robotIp, sdpOffer: offer.sdp, token: '' })
-			});
-			const answer = await resp.json();
-			if (answer.error) throw new Error(answer.error);
-
-			await this.pc.setRemoteDescription(
-				new RTCSessionDescription({ type: 'answer', sdp: answer.sdp })
-			);
-
-			// Wait for validation
-			this.status = 'validating';
-			await new Promise<void>((resolve, reject) => {
-				this.validationResolve = resolve;
-				setTimeout(() => reject(new Error('Validation timeout')), 10000);
-			});
-
-			this.status = 'connected';
+			await conn.connect();
 		} catch (err) {
 			this.error = err instanceof Error ? err.message : 'Connection failed';
 			this.status = 'disconnected';
+			this.conn = null;
 		}
 	}
 
 	disconnect() {
 		this.stopMove();
-		if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
-		this.dataChannel?.close();
-		this.pc?.close();
-		this.pc = null;
-		this.dataChannel = null;
-		this.heartbeatInterval = null;
+		this.conn?.disconnect();
+		this.conn = null;
 		this.status = 'disconnected';
 	}
 
+	/** Send a Go2 sport command (api_id + optional params). */
 	sendCommand(apiId: number, params?: Record<string, unknown>) {
-		if (!this.dataChannel || this.dataChannel.readyState !== 'open') return;
-		this.dataChannel.send(
-			JSON.stringify({
-				type: 'req',
-				topic: 'rt/api/sport/request',
-				data: {
-					header: { identity: { id: Date.now() % 2147483648, api_id: apiId } },
-					parameter: params ? JSON.stringify(params) : ''
-				}
-			})
-		);
+		try {
+			this.conn?.sportCommand(apiId, params);
+		} catch {
+			// Data channel not open — UI state will catch up via status events
+		}
 	}
 
-	/** Send a G1 loco mode command (api_id 7101 with mode data) */
+	/** Send a G1 loco mode command (api_id 7101 with mode data). */
 	sendG1LocoCommand(modeId: number) {
+		// G1 loco lives on the sport-request topic with its own api_id,
+		// so sportCommand handles it without a new SDK surface.
 		this.sendCommand(7101, { data: modeId });
 	}
 
-	/** Send a G1 arm action (api_id 7106 with action data) */
+	/** Send a G1 arm action (api_id 7106 on rt/api/arm/request). */
 	sendG1ArmAction(actionId: number) {
-		if (!this.dataChannel || this.dataChannel.readyState !== 'open') return;
-		this.dataChannel.send(
-			JSON.stringify({
-				type: 'req',
-				topic: 'rt/api/arm/request',
-				data: {
-					header: { identity: { id: Date.now() % 2147483648, api_id: 7106 } },
-					parameter: JSON.stringify({ data: actionId })
-				}
-			})
-		);
+		this.conn?.sendMessage({
+			type: 'req',
+			topic: 'rt/api/arm/request',
+			data: {
+				header: { identity: { id: Date.now() % 2147483648, api_id: 7106 } },
+				parameter: JSON.stringify({ data: actionId })
+			}
+		});
 	}
 
-	/** Send G1 joystick input */
+	/** Send G1 joystick input on rt/wirelesscontroller. */
 	sendG1Joystick(lx: number, ly: number, rx: number, ry: number) {
-		if (!this.dataChannel || this.dataChannel.readyState !== 'open') return;
-		this.dataChannel.send(
-			JSON.stringify({
-				type: 'msg',
-				topic: 'rt/wirelesscontroller',
-				data: { lx, ly, rx, ry, keys: 0 }
-			})
-		);
+		this.conn?.sendMessage({
+			type: 'msg',
+			topic: 'rt/wirelesscontroller',
+			data: { lx, ly, rx, ry, keys: 0 }
+		});
 	}
 
-	/** Start continuous movement — sends command every 500ms until stopMove is called */
+	/** Hold-to-move: send the command every 500ms until stopMove. */
 	startMove(vx: number, vy: number, vyaw: number, robotType: string = 'go2_pro') {
 		this.stopMove(robotType);
 		this.moving = true;
-		const send = robotType === 'g1'
-			? () => this.sendG1Joystick(vx, vy, vyaw, 0)
-			: () => this.sendCommand(1008, { x: vx, y: vy, z: vyaw });
+		const send =
+			robotType === 'g1'
+				? () => this.sendG1Joystick(vx, vy, vyaw, 0)
+				: () => this.sendCommand(1008, { x: vx, y: vy, z: vyaw });
 		send();
 		this.moveInterval = setInterval(send, 500);
 	}
 
-	/** Stop continuous movement */
 	stopMove(robotType: string = 'go2_pro') {
 		if (this.moveInterval) {
 			clearInterval(this.moveInterval);
@@ -147,54 +132,6 @@ class RobotConnectionState {
 			}
 			this.moving = false;
 		}
-	}
-
-	private setupDataChannel() {
-		if (!this.dataChannel) return;
-
-		this.dataChannel.onopen = () => {};
-		this.dataChannel.onclose = () => this.disconnect();
-		this.dataChannel.onerror = () => {
-			this.error = 'Data channel error';
-		};
-		this.dataChannel.onmessage = (e: MessageEvent) => {
-			if (typeof e.data !== 'string') return;
-			try {
-				const msg = JSON.parse(e.data);
-				if (msg.type === 'validation') {
-					if (msg.data === 'Validation Ok.') {
-						this.startHeartbeat();
-						this.validationResolve?.();
-					} else {
-						const hex = md5('UnitreeGo2_' + msg.data);
-						this.dataChannel?.send(
-							JSON.stringify({ type: 'validation', data: btoa(hex) })
-						);
-					}
-					return;
-				}
-				if (msg.type !== 'heartbeat') {
-					this.onMessageCallbacks.forEach((cb) => cb(msg));
-				}
-			} catch {}
-		};
-	}
-
-	private startHeartbeat() {
-		this.heartbeatInterval = setInterval(() => {
-			if (this.dataChannel?.readyState === 'open') {
-				const now = new Date();
-				this.dataChannel.send(
-					JSON.stringify({
-						type: 'heartbeat',
-						data: {
-							timeInStr: now.toISOString().replace('T', ' ').slice(0, 19),
-							timeInNum: Math.floor(now.getTime() / 1000)
-						}
-					})
-				);
-			}
-		}, 2000);
 	}
 }
 

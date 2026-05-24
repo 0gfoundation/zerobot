@@ -46,7 +46,8 @@ export async function getWebRTCProvider(): Promise<WebRTCProvider> {
   // assembled at runtime so static bundler analysis ignores them.
   try {
     const nodeModuleSpec = "node:" + "module";
-    const { createRequire } = await import(nodeModuleSpec);
+    // @vite-ignore: the unanalyzable specifier is intentional — see header doc.
+    const { createRequire } = await import(/* @vite-ignore */ nodeModuleSpec);
     const wrtcSpec = "@roamhq/" + "wrtc";
     const wrtc = createRequire(import.meta.url)(wrtcSpec);
     cachedProvider = {
