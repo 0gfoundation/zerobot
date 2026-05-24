@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { createRequire } from "node:module";
 
 /**
  * Minimal interface for the WebRTC types we need.
@@ -15,13 +14,22 @@ let cachedProvider: WebRTCProvider | null = null;
 /**
  * Get the appropriate WebRTC implementation for the current runtime.
  *
- * - In browsers: uses native WebRTC APIs
- * - In Node.js: uses @roamhq/wrtc (must be installed as a peer dependency)
+ * - In browsers: uses native WebRTC APIs (returns synchronously after the
+ *   first await tick — no Node-only code runs in this branch).
+ * - In Node.js: uses `@roamhq/wrtc` (an optional peer dep), loaded via
+ *   `createRequire` from `node:module`.
+ *
+ * `node:module` is imported *dynamically* and via a string-concatenated
+ * specifier so that browser bundlers (Vite, Rollup, esbuild, webpack)
+ * leave it unresolved at build time. At runtime in a browser the native
+ * branch returns before the dynamic import is attempted; if it ever is,
+ * the failure is caught and surfaced as a clear "install @roamhq/wrtc"
+ * error.
  */
-export function getWebRTCProvider(): WebRTCProvider {
+export async function getWebRTCProvider(): Promise<WebRTCProvider> {
   if (cachedProvider) return cachedProvider;
 
-  // Check for browser/native WebRTC
+  // Browser / native WebRTC
   const g = globalThis as any;
   if (
     typeof g.RTCPeerConnection !== "undefined" &&
@@ -34,10 +42,13 @@ export function getWebRTCProvider(): WebRTCProvider {
     return cachedProvider;
   }
 
-  // Node.js: try to load @roamhq/wrtc via createRequire (works in ESM)
+  // Node.js: load `@roamhq/wrtc` via `createRequire`. Both specifiers are
+  // assembled at runtime so static bundler analysis ignores them.
   try {
-    const require = createRequire(import.meta.url);
-    const wrtc = require("@roamhq/wrtc");
+    const nodeModuleSpec = "node:" + "module";
+    const { createRequire } = await import(nodeModuleSpec);
+    const wrtcSpec = "@roamhq/" + "wrtc";
+    const wrtc = createRequire(import.meta.url)(wrtcSpec);
     cachedProvider = {
       RTCPeerConnection: wrtc.RTCPeerConnection,
       RTCSessionDescription: wrtc.RTCSessionDescription,

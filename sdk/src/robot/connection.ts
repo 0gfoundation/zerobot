@@ -73,7 +73,7 @@ export class Go2Connection extends EventEmitter<Go2ConnectionEvents> {
 
     try {
       const { RTCPeerConnection, RTCSessionDescription } =
-        getWebRTCProvider();
+        await getWebRTCProvider();
 
       // Create peer connection
       const pc = new RTCPeerConnection({
