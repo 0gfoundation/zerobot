@@ -27,8 +27,16 @@ export class ChainListener extends EventEmitter<ChainListenerEvents> {
   }
 
   /**
-   * Start listening for commands using event subscription.
-   * Falls back to polling if subscription fails.
+   * Start watching for new commands. Tries WebSocket-style event subscription
+   * first; on failure (RPC doesn't support `eth_subscribe`), silently falls
+   * back to polling at `pollIntervalMs`. Idempotent — calling twice is a no-op.
+   *
+   * Only commands with a nonce ≥ the current on-chain nonce at start time
+   * are surfaced; historical commands are skipped. To replay history, read
+   * them directly via `ChainClient.getCommand`.
+   *
+   * @param pollIntervalMs Polling cadence in milliseconds, only used when
+   *   subscription is unavailable. Defaults to 3000.
    */
   async start(pollIntervalMs = 3000): Promise<void> {
     if (this.listening) return;
@@ -46,7 +54,7 @@ export class ChainListener extends EventEmitter<ChainListenerEvents> {
   }
 
   /**
-   * Stop listening for commands.
+   * Stop watching for commands. Idempotent.
    */
   stop(): void {
     this.listening = false;

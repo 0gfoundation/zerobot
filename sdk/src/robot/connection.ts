@@ -65,7 +65,15 @@ export class Go2Connection extends EventEmitter<Go2ConnectionEvents> {
   }
 
   /**
-   * Establish WebRTC connection to the robot.
+   * Establish a WebRTC connection to the robot. Resolves once the data
+   * channel is open, the validation handshake has completed, and the
+   * heartbeat is running — status transitions
+   * `disconnected → connecting → validating → connected`.
+   *
+   * @throws If SDP negotiation fails (robot unreachable, signaling proxy
+   *   error, or CORS for browser callers without `signalingProxyUrl`).
+   * @throws If the data channel doesn't open within 10s.
+   * @throws If the validation handshake doesn't complete within 10s.
    */
   async connect(): Promise<void> {
     if (this._status === "connected") return;
@@ -131,7 +139,13 @@ export class Go2Connection extends EventEmitter<Go2ConnectionEvents> {
   }
 
   /**
-   * Send a sport command to the robot.
+   * Send a sport command to the robot. Fire-and-forget — no acknowledgement
+   * is awaited; the robot may take seconds to execute. Parameter ranges
+   * depend on `apiId` (e.g. `Move` takes `{x, y, z}` velocities with
+   * per-axis limits — see `COMMAND_SCHEMAS` or `AGENTS.md`).
+   *
+   * @throws If the data channel is not open (call only after `connect()`
+   *   resolves or after the `connected` event).
    */
   sportCommand(
     apiId: SportCommand,

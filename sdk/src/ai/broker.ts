@@ -32,8 +32,14 @@ export class AIBroker {
   }
 
   /**
-   * Initialize the 0G Compute broker.
-   * Must be called before resolvePrompt().
+   * Initialize the 0G Compute broker — discovers a provider for the
+   * configured `model` (or uses the explicit `providerAddress`), fetches its
+   * service URL, and acknowledges its signer on-chain. **Must be called once
+   * before any `resolvePrompt` call.** Subsequent `resolvePrompt` calls
+   * consume 0G Compute funds from the configured wallet.
+   *
+   * @throws If `@0glabs/0g-serving-broker` is not installed.
+   * @throws If no provider is found for the configured model.
    */
   async initialize(): Promise<void> {
     let createBroker: any;
@@ -76,7 +82,13 @@ export class AIBroker {
   }
 
   /**
-   * Resolve a natural language prompt into robot commands via 0G Compute.
+   * Resolve a natural language prompt into a sequence of robot commands via
+   * 0G Compute inference. Costs 0G Compute funds per call.
+   *
+   * @returns Commands in the order the LLM produced them — callers should
+   *   dispatch/execute in array order. Empty array if the model produced
+   *   nothing actionable.
+   * @throws If `initialize()` has not been called.
    */
   async resolvePrompt(prompt: string): Promise<CommandPayload[]> {
     if (!this.broker || !this.providerAddress || !this.serviceUrl) {

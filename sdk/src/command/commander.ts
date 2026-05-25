@@ -22,6 +22,14 @@ export class Commander {
     this.client = new ChainClient(chainConfig);
   }
 
+  /**
+   * Send a single command on-chain. The payload's `params` object is
+   * JSON-stringified into the contract's `parameters` field; the call
+   * auto-waits for the transaction receipt.
+   *
+   * @param value Wei to include — must be at least the robot's
+   *   `commandPrice` (see `ChainClient.getCommandPrice`). Defaults to `0`.
+   */
   async sendCommand(
     robotId: string,
     command: CommandPayload,
@@ -35,6 +43,12 @@ export class Commander {
     );
   }
 
+  /**
+   * Send multiple commands atomically.
+   *
+   * @param value Wei to include — must be at least
+   *   `commandPrice * commands.length`. Defaults to `0`.
+   */
   async sendBatch(
     robotId: string,
     commands: CommandPayload[],

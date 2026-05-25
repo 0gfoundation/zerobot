@@ -46,6 +46,16 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     this.listener = new ChainListener(this.client, robotId);
   }
 
+  /**
+   * Connect to the robot over WebRTC and start the on-chain listener. Resolves
+   * once both are running; the bridge then processes commands indefinitely
+   * until `stop()` is called. Idempotent — calling twice is a no-op.
+   *
+   * Commands older than 5 minutes (matches the contract's `COMMAND_EXPIRY`)
+   * are auto-rejected with `success=false, resultData="Command expired"`
+   * rather than executed. `Move` commands with a `duration_ms` parameter
+   * are issued repeatedly for the duration, then halted with `StopMove`.
+   */
   async start(): Promise<void> {
     if (this.running) return;
 
@@ -61,6 +71,9 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     this.emit("started");
   }
 
+  /**
+   * Stop the listener and disconnect the robot. Idempotent.
+   */
   async stop(): Promise<void> {
     this.running = false;
     this.listener.stop();
