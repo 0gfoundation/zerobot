@@ -44,8 +44,14 @@ export class AIBroker {
   async initialize(): Promise<void> {
     let createBroker: any;
     try {
+      // Optional peer dependency. The specifier is assembled at runtime so
+      // browser bundlers can't statically resolve it (mirrors the pattern in
+      // robot/platform.ts for node:module). At runtime in Node when the
+      // package is installed it loads normally; otherwise the catch below
+      // produces a clear "install ..." error.
+      const brokerSpec = "@0glabs/" + "0g-serving-broker";
       // @ts-ignore — optional peer dependency, loaded dynamically
-      const module = await import("@0glabs/0g-serving-broker");
+      const module = await import(/* @vite-ignore */ brokerSpec);
       createBroker = module.createZGComputeNetworkBroker;
     } catch {
       throw new Error(
