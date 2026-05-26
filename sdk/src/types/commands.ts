@@ -58,13 +58,23 @@ export enum MotionSwitcherCommand {
 
 export interface CommandPayload {
   command: string;
-  apiId: SportCommand;
+  /**
+   * Numeric command id. For Go2 this is a `SportCommand` enum value; for
+   * other robot types it's an api id from a different range (e.g. G1 loco
+   * `7101`). Typed as `number` so payloads can target any robot type.
+   */
+  apiId: number;
   params?: Record<string, unknown>;
   duration_ms?: number;
 }
 
 export interface CommandSchema {
-  apiId: SportCommand;
+  /**
+   * Numeric command id sent over the wire. For Go2 this is a `SportCommand`
+   * enum value; for G1 it's a loco/arm/etc. api id from a different range.
+   * Typed as `number` so schemas can describe any robot type.
+   */
+  apiId: number;
   name: string;
   description: string;
   params?: {

@@ -6,7 +6,13 @@
  *   npx tsx send-command.ts Move '{"x":0.3,"y":0,"z":0}'
  */
 import "dotenv/config";
-import { Commander, COMMAND_NAME_MAP, SportCommand } from "@0g-foundation/zerobot-sdk";
+import { Commander, GO2_SPORT_SCHEMAS, SportCommand } from "@0g-foundation/zerobot-sdk";
+
+// Look up a command by its human-readable name. For this example we know
+// the robot is a Go2; in a multi-robot setting, call `chainClient.getRobot(id)`
+// then `getSchemasForRobotType(robot.robotType)` and build the map from
+// that result.
+const COMMAND_NAME_MAP = new Map(GO2_SPORT_SCHEMAS.map((s) => [s.name, s]));
 
 const {
   RPC_URL = "https://evmrpc-testnet.0g.ai",

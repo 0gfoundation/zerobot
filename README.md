@@ -68,7 +68,15 @@ For browsing without an IDE. Method semantics — parameter units, throw conditi
 - **`Commander`** — `sendCommand` · `sendBatch`
 - **`ChainListener`** — `start` · `stop`; events: `command`, `error`
 - **`AIBroker`** — `initialize` · `resolvePrompt`
-- Helpers: `walletClientToSigner`, `buildSystemPrompt`, `parseLLMResponse`, `COMMAND_SCHEMAS`, `COMMAND_SCHEMA_MAP`, `COMMAND_NAME_MAP`
+- Per-robot-type command vocabulary: `GO2_SPORT_SCHEMAS`, `SCHEMAS_BY_ROBOT_TYPE`, `getSchemasForRobotType(robotType)`
+- Other helpers: `walletClientToSigner`, `buildSystemPrompt`, `parseLLMResponse`
+
+Listing the commands available for a particular robot is a one-liner composing two primitives — no dedicated method needed on `Commander`:
+
+```ts
+const robot = await chainClient.getRobot(robotId);
+const schemas = getSchemasForRobotType(robot.robotType); // [] for unknown types
+```
 
 **`@0g-foundation/zerobot-sdk/robot`**
 - **`Go2Connection`** — `connect` · `disconnect` · `sportCommand` · `vuiCommand` · `motionSwitcherCommand` · `subscribe` · `unsubscribe` · `setVideo` · `setAudio` · `sendMessage`; events: `connected`, `disconnected`, `error`, `message`, `status`

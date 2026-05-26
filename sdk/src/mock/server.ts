@@ -16,7 +16,10 @@ import {
   generateAesKey,
 } from "../robot/crypto.js";
 import { computeValidationResponse } from "../robot/crypto.js";
-import { COMMAND_SCHEMA_MAP } from "../command/schemas.js";
+import { GO2_SPORT_SCHEMAS } from "../command/schemas/go2.js";
+
+// Mock is a Go2 stand-in; validate against Go2 sport schemas.
+const COMMAND_SCHEMA_MAP = new Map(GO2_SPORT_SCHEMAS.map((s) => [s.apiId, s]));
 
 // ---- RSA Key Pair (generated once at startup) ----
 

@@ -8,6 +8,14 @@ Zerobot is a platform for on-chain control of robots via the 0G blockchain. Robo
 
 Currently supports Unitree Go2 Pro. Designed for future extensibility to other robot types.
 
+## SDK Status: Experimental
+
+The SDK has not been published to npm. The only consumers today are workspace siblings (`apps/dashboard`, `examples/`) which can be updated in the same change as any SDK edit. **Breaking changes — renames, type tightening or loosening, file restructures, exported-symbol changes — are fine and expected when they produce cleaner designs.** Don't preserve API names or add deprecation shims for hypothetical external consumers; favour the shape the SDK will have post-release over a backward-compatible compromise of today's shape.
+
+The corollary: the extensibility work going in *now* (per-robot-type schema registry, wallet-resolution union, subpath exports) exists specifically so that *future* extensions won't *need* breaking changes once the SDK is released. Pre-release shape changes are open game; post-release shape changes will need the normal deprecation discipline.
+
+When the SDK is published to npm, remove or update this section.
+
 ## Repository Structure
 
 pnpm monorepo with four workspaces:

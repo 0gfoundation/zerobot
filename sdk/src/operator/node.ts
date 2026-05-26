@@ -2,7 +2,12 @@ import { EventEmitter } from "eventemitter3";
 import { Go2Connection } from "../robot/connection.js";
 import { ChainClient } from "../chain/client.js";
 import { ChainListener } from "../chain/listener.js";
-import { COMMAND_SCHEMA_MAP } from "../command/schemas.js";
+import { GO2_SPORT_SCHEMAS } from "../command/schemas/go2.js";
+
+// Operator currently dispatches Go2 sport commands; this lookup gives
+// estimatedDurationMs for the wait-after-send pacing. When operators
+// handle other robot types, swap in a registry lookup keyed by robotType.
+const SCHEMA_BY_API_ID = new Map(GO2_SPORT_SCHEMAS.map((s) => [s.apiId, s]));
 import type { RobotConfig } from "../types/robot.js";
 import type { ChainConfig, OnChainCommand } from "../types/chain.js";
 import { SportCommand } from "../types/commands.js";
@@ -112,7 +117,7 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
         this.connection.sportCommand(cmd.apiId as SportCommand, params);
 
         // Wait for estimated command duration
-        const schema = COMMAND_SCHEMA_MAP.get(cmd.apiId);
+        const schema = SCHEMA_BY_API_ID.get(cmd.apiId);
         if (schema && schema.estimatedDurationMs > 0) {
           await sleep(schema.estimatedDurationMs);
         }

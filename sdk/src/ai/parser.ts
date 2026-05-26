@@ -1,5 +1,9 @@
-import { COMMAND_NAME_MAP } from "../command/schemas.js";
-import type { CommandPayload, SportCommand } from "../types/commands.js";
+import { GO2_SPORT_SCHEMAS } from "../command/schemas/go2.js";
+import type { CommandPayload } from "../types/commands.js";
+
+// Currently Go2-specific. When AI support is added for other robot types
+// the parser will be parameterized by schemas.
+const SCHEMA_BY_NAME = new Map(GO2_SPORT_SCHEMAS.map((s) => [s.name, s]));
 
 export interface RawAICommand {
   command: string;
@@ -46,14 +50,14 @@ export function parseLLMResponse(raw: string): CommandPayload[] {
       throw new Error(`Invalid command entry: missing "command" field`);
     }
 
-    const schema = COMMAND_NAME_MAP.get(item.command);
+    const schema = SCHEMA_BY_NAME.get(item.command);
     if (!schema) {
       throw new Error(`Unknown command: "${item.command}"`);
     }
 
     commands.push({
       command: item.command,
-      apiId: schema.apiId as SportCommand,
+      apiId: schema.apiId,
       params: item.params,
       duration_ms: item.duration_ms ?? schema.estimatedDurationMs,
     });

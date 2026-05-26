@@ -1,7 +1,7 @@
-import { SportCommand, type CommandSchema } from "../types/commands.js";
+import { SportCommand, type CommandSchema } from "../../types/commands.js";
 
-/** Command schemas for all supported sport commands */
-export const COMMAND_SCHEMAS: CommandSchema[] = [
+/** Sport-mode command schemas for the Unitree Go2 family (Pro, Air, Edu). */
+export const GO2_SPORT_SCHEMAS: CommandSchema[] = [
   { apiId: SportCommand.Damp, name: "Damp", description: "Zero-torque relaxed state (soft e-stop)", estimatedDurationMs: 500 },
   { apiId: SportCommand.BalanceStand, name: "BalanceStand", description: "Active balanced standing", estimatedDurationMs: 1000 },
   { apiId: SportCommand.StopMove, name: "StopMove", description: "Halt all movement", estimatedDurationMs: 500 },
@@ -71,13 +71,3 @@ export const COMMAND_SCHEMAS: CommandSchema[] = [
   { apiId: SportCommand.Bound, name: "Bound", description: "Bounding gait", estimatedDurationMs: 3000 },
   { apiId: SportCommand.MoonWalk, name: "MoonWalk", description: "Moonwalk dance move", estimatedDurationMs: 5000 },
 ];
-
-/** Lookup command schema by apiId */
-export const COMMAND_SCHEMA_MAP = new Map(
-  COMMAND_SCHEMAS.map((s) => [s.apiId, s]),
-);
-
-/** Lookup command schema by name */
-export const COMMAND_NAME_MAP = new Map(
-  COMMAND_SCHEMAS.map((s) => [s.name, s]),
-);

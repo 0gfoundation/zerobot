@@ -1,11 +1,13 @@
-import { COMMAND_SCHEMAS } from "../command/schemas.js";
+import { GO2_SPORT_SCHEMAS } from "../command/schemas/go2.js";
 
 /**
- * Build the system prompt for LLM inference that converts
- * natural language to structured robot commands.
+ * Build the system prompt for LLM inference that converts natural language
+ * to structured robot commands. Currently Go2-specific — uses
+ * `GO2_SPORT_SCHEMAS` as its command vocabulary. When AI support is added
+ * for other robot types this will be parameterized by schemas.
  */
 export function buildSystemPrompt(): string {
-  const commandList = COMMAND_SCHEMAS.map((schema) => {
+  const commandList = GO2_SPORT_SCHEMAS.map((schema) => {
     let entry = `- **${schema.name}** (apiId: ${schema.apiId}): ${schema.description}`;
     if (schema.params) {
       const paramDesc = Object.entries(schema.params)

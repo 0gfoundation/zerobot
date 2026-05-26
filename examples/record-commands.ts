@@ -22,9 +22,14 @@ import {
 } from "@0g-foundation/zerobot-sdk/robot";
 import {
   SportCommand,
-  COMMAND_SCHEMAS,
-  COMMAND_NAME_MAP,
+  GO2_SPORT_SCHEMAS,
 } from "@0g-foundation/zerobot-sdk";
+
+// Build per-name and per-apiId lookups locally. In a multi-robot
+// setting, replace `GO2_SPORT_SCHEMAS` with the result of
+// `getSchemasForRobotType(robot.robotType)`.
+const COMMAND_SCHEMAS = GO2_SPORT_SCHEMAS;
+const COMMAND_NAME_MAP = new Map(GO2_SPORT_SCHEMAS.map((s) => [s.name, s]));
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

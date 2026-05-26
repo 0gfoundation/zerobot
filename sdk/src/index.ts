@@ -11,12 +11,12 @@ export type { ChainListenerEvents } from "./chain/index.js";
 // directly, or convert a viem WalletClient to an ethers Signer explicitly.
 export { walletClientToSigner } from "./chain/adapter.js";
 
-// Commands — origination + vocabulary
+// Commands — origination + per-robot-type vocabulary
 export {
   Commander,
-  COMMAND_SCHEMAS,
-  COMMAND_SCHEMA_MAP,
-  COMMAND_NAME_MAP,
+  GO2_SPORT_SCHEMAS,
+  SCHEMAS_BY_ROBOT_TYPE,
+  getSchemasForRobotType,
 } from "./command/index.js";
 
 // AI integration (AIBroker requires a Node runtime + the optional
