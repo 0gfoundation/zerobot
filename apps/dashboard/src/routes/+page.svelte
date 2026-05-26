@@ -162,7 +162,14 @@
 </script>
 
 <div class="mx-auto max-w-5xl px-4 py-6">
-	{#if !wallet.connected}
+	{#if !wallet.settled && wallet.hasCachedSession}
+		<!-- Returning user: wagmi is still restoring the prior session. Render the
+		     dashboard shell with a loading placeholder so we don't flash the CTA. -->
+		<section class="mb-4 rounded-lg border border-line bg-surface-tertiary p-4">
+			<h2 class="mb-3 text-xs font-semibold tracking-wider uppercase text-muted">Your Robots</h2>
+			<p class="text-sm text-muted">Restoring session…</p>
+		</section>
+	{:else if !wallet.connected}
 		<div class="flex flex-col items-center justify-center py-20 text-center">
 			<h2 class="mb-2 text-xl font-semibold text-default">Connect your wallet</h2>
 			<p class="text-sm text-muted">Connect a wallet to manage and control your robots.</p>

@@ -55,14 +55,23 @@ class WalletState {
 	connectors = $state<readonly Connector[]>([]);
 	error = $state<string | null>(null);
 	ready = $state(false);
+	// Snapshot of whether wagmi has a persisted connector at page load — captured
+	// synchronously before hydration races so consumers can render an optimistic
+	// shell for returning users instead of flashing the Connect CTA.
+	hasCachedSession = false;
 	private connectGeneration = 0;
 	private userInitiatedConnect = $state(false);
 
 	connected = $derived(this.status === 'connected');
 	connecting = $derived(this.userInitiatedConnect && !this.connected);
+	// True once wagmi has reached a terminal status. Use to gate signer-dependent
+	// effects and decide between "still hydrating" and "definitely disconnected".
+	settled = $derived(this.ready && this.status !== 'reconnecting');
 
 	constructor() {
 		if (!browser) return;
+
+		this.hasCachedSession = localStorage.getItem('wagmi.recentConnectorId') !== null;
 
 		const config = getConfig();
 
