@@ -59,6 +59,29 @@ The SDK has four entry points:
 
 Runnable end-to-end scripts in [`examples/`](./examples), including the operator-node side and AI-driven command resolution via 0G Compute.
 
+## API surface
+
+For browsing without an IDE. Method semantics — parameter units, throw conditions, wait-or-not contracts — live in JSDoc, surfaced via IntelliSense after `import`.
+
+**`@0g-foundation/zerobot-sdk`** (root)
+- **`ChainClient`** — `registerRobot` · `updateRobot` · `addController` · `removeController` · `setCommandPrice` · `dispatchCommand` · `dispatchBatch` · `submitReceipt` · `withdrawBalance` · `getRobotNonce` · `getCommand` · `isAuthorized` · `getRobot` · `getCommandPrice` · `listRobotsByOwner`
+- **`Commander`** — `sendCommand` · `sendBatch`
+- **`ChainListener`** — `start` · `stop`; events: `command`, `error`
+- **`AIBroker`** — `initialize` · `resolvePrompt`
+- Helpers: `walletClientToSigner`, `buildSystemPrompt`, `parseLLMResponse`, `COMMAND_SCHEMAS`, `COMMAND_SCHEMA_MAP`, `COMMAND_NAME_MAP`
+
+**`@0g-foundation/zerobot-sdk/robot`**
+- **`Go2Connection`** — `connect` · `disconnect` · `sportCommand` · `vuiCommand` · `motionSwitcherCommand` · `subscribe` · `unsubscribe` · `setVideo` · `setAudio` · `sendMessage`; events: `connected`, `disconnected`, `error`, `message`, `status`
+- **`Go2Signaling`** — `negotiate`
+- **`Heartbeat`** — `start` · `stop`
+- Enums: `DataChannelType`, `RtcTopic`. Message builders: `buildSportCommandMessage` and siblings (vui / motionSwitcher / subscribe / unsubscribe / videoToggle / audioToggle). Crypto helpers: `generateAesKey`, `aesEcbEncrypt`/`Decrypt`, `aesGcmDecrypt`, `rsaEncrypt`, `computeValidationResponse`.
+
+**`@0g-foundation/zerobot-sdk/operator`**
+- **`OperatorNode`** — `start` · `stop`; events: `started`, `stopped`, `commandReceived`, `commandExecuted`, `error`
+
+**`@0g-foundation/zerobot-sdk/mock`**
+- `startMockRobot(port?: number)`
+
 ## Project structure
 
 ```
