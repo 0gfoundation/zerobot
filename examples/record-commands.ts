@@ -380,6 +380,9 @@ const STREAM_TIMEOUT_MS = 5000;
 /** Joint state arrives about once a second, so runs are staggered across this period */
 const JOINT_SAMPLE_PERIOD_MS = 1000;
 
+/** Below this charge the recorder warns before each run. The Go2 lies down to protect itself when low. */
+const LOW_BATTERY_PERCENT = 20;
+
 interface RecordedMessage {
   /**
    * Milliseconds since the command was sent. Each stream starts with the
@@ -476,6 +479,12 @@ async function main(): Promise<void> {
   let jointSampleWaiters: Array<() => void> = [];
   const nextJointSample = () => new Promise<void>((resolve) => jointSampleWaiters.push(resolve));
 
+  /** Charge percentage from the latest joint-state message, if the robot reports it (Go2 does) */
+  const batteryPercent = (): number | null => {
+    const data = lastMessage.get(RtcTopic.LOW_STATE)?.data as { bms_state?: { soc?: number } } | undefined;
+    return typeof data?.bms_state?.soc === "number" ? data.bms_state.soc : null;
+  };
+
   conn.on("message", (msg: Record<string, unknown>) => {
     const topic = msg.topic as string;
     if (msg.type === DataChannelType.MSG && stateTopics.includes(topic)) {
@@ -533,6 +542,8 @@ async function main(): Promise<void> {
     for (const topic of optional.filter((t) => !lastMessage.has(t))) {
       console.warn(`Warning: no data on ${topic}; recordings will not include it.\n`);
     }
+    const startBattery = batteryPercent();
+    if (startBattery !== null) console.log(`Battery: ${startBattery}%\n`);
 
     // Record each command
     let quit = false;
@@ -562,8 +573,15 @@ async function main(): Promise<void> {
         const offsetMs = Math.round((run * JOINT_SAMPLE_PERIOD_MS) / REPEAT);
         const label = REPEAT > 1 ? `Run ${run + 1}/${REPEAT} (offset ${offsetMs}ms)` : cmd.name;
 
+        const battery = batteryPercent();
+        const status = battery !== null ? `${label}, battery ${battery}%` : label;
+        if (battery !== null && battery < LOW_BATTERY_PERCENT) {
+          console.warn(`  Battery is at ${battery}%. The Go2 lies down to protect itself when low, so consider q and charging.`);
+        }
+
+        if (!rl) console.log(`  ${status}`);
         if (rl) {
-          const answer = await ask(`  ${label}: reset the robot's position, then press Enter (q to quit) `);
+          const answer = await ask(`  ${status}: reset the robot's position, then press Enter (q to quit) `);
           if (answer === null || answer.trim().toLowerCase() === "q") {
             quit = true;
             break;
