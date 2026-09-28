@@ -66,9 +66,16 @@ export function aesGcmDecrypt(data: Uint8Array, key: Uint8Array): string {
 /**
  * RSA PKCS1-v1.5 encrypt. Handles chunking for large data.
  * Returns base64-encoded ciphertext.
+ *
+ * @param publicKeyText Either PEM, or bare base64 DER (SubjectPublicKeyInfo
+ *   or PKCS#1), which is what the robot sends in `con_notify`.
  */
-export function rsaEncrypt(data: string, publicKeyPem: string): string {
-  const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
+export function rsaEncrypt(data: string, publicKeyText: string): string {
+  const publicKey = publicKeyText.includes("-----BEGIN")
+    ? forge.pki.publicKeyFromPem(publicKeyText)
+    : (forge.pki.publicKeyFromAsn1(
+        forge.asn1.fromDer(forge.util.decode64(publicKeyText.replace(/\s+/g, ""))),
+      ) as forge.pki.rsa.PublicKey);
   const keySize = Math.ceil(publicKey.n.bitLength() / 8);
   const maxChunkSize = keySize - 11; // PKCS1-v1.5 padding overhead
 
@@ -85,12 +92,11 @@ export function rsaEncrypt(data: string, publicKeyPem: string): string {
 
 /**
  * Compute the validation response for WebRTC channel authentication.
- * Algorithm: base64(md5("UnitreeGo2_" + challengeKey))
- * where md5 returns a hex string, then that hex string is base64-encoded.
+ * Algorithm: base64 of the 16 raw bytes of md5("UnitreeGo2_" + challengeKey),
+ * not of its hex string.
  */
 export function computeValidationResponse(challengeKey: string): string {
   const md = forge.md.md5.create();
   md.update("UnitreeGo2_" + challengeKey);
-  const hexDigest = md.digest().toHex();
-  return forge.util.encode64(hexDigest);
+  return forge.util.encode64(md.digest().getBytes());
 }

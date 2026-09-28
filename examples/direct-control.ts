@@ -17,7 +17,7 @@ async function sleep(ms: number): Promise<void> {
 async function main(): Promise<void> {
   console.log(`Connecting to Go2 Pro at ${ROBOT_IP}...`);
 
-  const conn = new Go2Connection({ ip: ROBOT_IP });
+  const conn = new Go2Connection({ ip: ROBOT_IP, deviceKey: process.env.ROBOT_DEVICE_KEY });
 
   conn.on("status", (status) => console.log(`Status: ${status}`));
   conn.on("error", (err) => console.error("Error:", err.message));

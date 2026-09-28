@@ -30,6 +30,7 @@
 
 	// --- WebRTC ---
 	let robotIp = $state('192.168.123.18');
+	let deviceKey = $state('');
 	let connectionMode = $state<'robot' | 'dryrun'>('robot');
 
 	const ROBOT_TYPE_LABELS: Record<string, string> = {
@@ -147,7 +148,7 @@
 		} else {
 			const ip = connectionMode === 'dryrun' ? '127.0.0.1' : robotIp;
 			log(connectionMode === 'dryrun' ? 'Starting dry run...' : `Connecting to ${ip}...`);
-			await robot.connect(ip);
+			await robot.connect(ip, connectionMode === 'robot' ? deviceKey.trim() || undefined : undefined);
 			if (robot.connected) log(connectionMode === 'dryrun' ? 'Dry run active!' : 'Robot connected!');
 			if (robot.error) log(`Error: ${robot.error}`);
 		}
@@ -303,6 +304,17 @@
 							<input
 								id="robotIp"
 								bind:value={robotIp}
+								class="w-full rounded border border-line bg-surface px-3 py-2 text-sm text-default focus:border-accent focus:outline-none"
+							/>
+						</div>
+						<div class="flex-1">
+							<label for="deviceKey" class="mb-1 block text-xs text-muted">Device key (Go2 firmware 1.1.15+)</label>
+							<input
+								id="deviceKey"
+								type="password"
+								autocomplete="off"
+								placeholder="32 hex characters"
+								bind:value={deviceKey}
 								class="w-full rounded border border-line bg-surface px-3 py-2 text-sm text-default focus:border-accent focus:outline-none"
 							/>
 						</div>

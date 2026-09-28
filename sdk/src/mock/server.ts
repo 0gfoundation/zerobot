@@ -24,12 +24,15 @@ const COMMAND_SCHEMA_MAP = new Map(GO2_SPORT_SCHEMAS.map((s) => [s.apiId, s]));
 // ---- RSA Key Pair (generated once at startup) ----
 
 const rsaKeyPair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
-const publicKeyPem = forge.pki.publicKeyToPem(rsaKeyPair.publicKey);
+// Real robots send the public key as bare base64 DER, not PEM
+const publicKeyDer = forge.util.encode64(
+  forge.asn1.toDer(forge.pki.publicKeyToAsn1(rsaKeyPair.publicKey)).getBytes(),
+);
 const privateKey = rsaKeyPair.privateKey;
 
 // ---- Signaling State ----
 
-/** 10 random chars as prefix/suffix padding around the PEM key */
+/** 10 random chars as prefix/suffix padding around the public key */
 function randomPadding(len: number): string {
   const chars = "ABCDEFGHIJ";
   let result = "";
@@ -40,7 +43,7 @@ function randomPadding(len: number): string {
 }
 
 /**
- * Build the data1 string: 10 chars padding + PEM + 10 chars padding.
+ * Build the data1 string: 10 chars padding + public key + 10 chars padding.
  * The last 10 chars encode the dynamic URL path via pairs mapping to digits.
  */
 function buildData1(): string {
@@ -48,7 +51,7 @@ function buildData1(): string {
   // The suffix must be 5 pairs of chars where the second char of each pair
   // maps to digits 0-9 via ['A'..'J']. We use a fixed suffix for simplicity.
   const suffix = "AABBCCDDEE"; // maps to path ending "01234"
-  return prefix + publicKeyPem + suffix;
+  return prefix + publicKeyDer + suffix;
 }
 
 function calcExpectedPathEnding(data1: string): string {

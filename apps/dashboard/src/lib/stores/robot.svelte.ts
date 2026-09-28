@@ -31,10 +31,11 @@ class RobotConnectionState {
 		};
 	}
 
-	async connect(robotIp: string) {
+	async connect(robotIp: string, deviceKey?: string) {
 		this.error = null;
 		const conn = new Go2Connection({
 			ip: robotIp,
+			deviceKey,
 			signalingProxyUrl: '/api/negotiate'
 		});
 		this.conn = conn;
