@@ -10,6 +10,7 @@ import { OperatorNode } from "@0g-foundation/zerobot-sdk/operator";
 
 const {
   ROBOT_IP = "192.168.123.18",
+  ROBOT_DEVICE_KEY,
   RPC_URL = "https://evmrpc-testnet.0g.ai",
   PRIVATE_KEY,
   REGISTRY_ADDRESS,
@@ -26,7 +27,7 @@ if (!PRIVATE_KEY || !REGISTRY_ADDRESS || !DISPATCHER_ADDRESS || !ROBOT_ID) {
 
 async function main(): Promise<void> {
   const operator = new OperatorNode(
-    { ip: ROBOT_IP },
+    { ip: ROBOT_IP, deviceKey: ROBOT_DEVICE_KEY },
     {
       rpcUrl: RPC_URL,
       registryAddress: REGISTRY_ADDRESS!,

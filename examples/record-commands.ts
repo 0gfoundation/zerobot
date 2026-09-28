@@ -329,7 +329,10 @@ function sendG1Joystick(conn: Go2Connection, lx: number, ly: number, rx: number,
  * run; no data on an `optional` topic only warns.
  */
 const STATE_TOPICS: Record<string, { required: string[]; optional: string[] }> = {
-  go2: { required: [RtcTopic.LOW_STATE], optional: [RtcTopic.SPORT_MOD_STATE] },
+  go2: {
+    required: [RtcTopic.LOW_STATE, RtcTopic.LF_SPORT_MOD_STATE],
+    optional: [RtcTopic.ROBOT_POSE],
+  },
   g1: { required: [RtcTopic.LOW_STATE], optional: [] },
 };
 
@@ -406,7 +409,7 @@ async function main(): Promise<void> {
 
   // Connect to robot
   console.log(`Connecting to ${ROBOT_TYPE.toUpperCase()} at ${ROBOT_IP}...`);
-  const conn = new Go2Connection({ ip: ROBOT_IP });
+  const conn = new Go2Connection({ ip: ROBOT_IP, deviceKey: process.env.ROBOT_DEVICE_KEY });
   conn.on("error", (err) => console.error("Connection error:", err.message));
   await conn.connect();
   console.log("Connected!\n");

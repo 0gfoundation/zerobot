@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
+import crypto from "node:crypto";
+import forge from "node-forge";
 import {
   generateAesKey,
   aesEcbEncrypt,
   aesEcbDecrypt,
+  rsaEncrypt,
   computeValidationResponse,
 } from "../../src/robot/crypto.js";
 
@@ -51,17 +54,25 @@ describe("crypto", () => {
     });
   });
 
+  describe("rsaEncrypt", () => {
+    const { publicKey, privateKey } = forge.pki.rsa.generateKeyPair({ bits: 1024 });
+    const decrypt = (b64: string) => privateKey.decrypt(forge.util.decode64(b64), "RSAES-PKCS1-V1_5");
+
+    it("accepts bare base64 DER, the format the robot sends", () => {
+      const der = forge.util.encode64(forge.asn1.toDer(forge.pki.publicKeyToAsn1(publicKey)).getBytes());
+      expect(decrypt(rsaEncrypt("session-key", der))).toBe("session-key");
+    });
+
+    it("accepts PEM", () => {
+      expect(decrypt(rsaEncrypt("session-key", forge.pki.publicKeyToPem(publicKey)))).toBe("session-key");
+    });
+  });
+
   describe("computeValidationResponse", () => {
-    it("should compute base64(md5('UnitreeGo2_' + key))", () => {
-      // Test with a known challenge key
-      // md5("UnitreeGo2_test123") should produce a deterministic result
-      const response = computeValidationResponse("test123");
-      expect(response).toBeTruthy();
-      // Verify it's valid base64
-      expect(() => Buffer.from(response, "base64")).not.toThrow();
-      // The base64-decoded value should be a 32-char hex MD5 digest
-      const decoded = Buffer.from(response, "base64").toString("utf-8");
-      expect(decoded).toMatch(/^[0-9a-f]{32}$/);
+    it("should base64-encode the raw md5 bytes of 'UnitreeGo2_' + key", () => {
+      // Real Go2 firmware accepts this; base64 of the hex digest times out
+      const expected = crypto.createHash("md5").update("UnitreeGo2_test123").digest("base64");
+      expect(computeValidationResponse("test123")).toBe(expected);
     });
 
     it("should produce deterministic results", () => {

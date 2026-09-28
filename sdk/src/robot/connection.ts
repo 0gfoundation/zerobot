@@ -52,7 +52,10 @@ export class Go2Connection extends EventEmitter<Go2ConnectionEvents> {
 
   constructor(private config: RobotConfig) {
     super();
-    this.signaling = new Go2Signaling(config.ip, config.signalingProxyUrl);
+    this.signaling = new Go2Signaling(config.ip, {
+      proxyUrl: config.signalingProxyUrl,
+      deviceKey: config.deviceKey,
+    });
   }
 
   get status(): ConnectionStatus {

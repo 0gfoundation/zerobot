@@ -13,13 +13,19 @@ export const DataChannelType = {
   RTC_INNER_REQ: "rtc_inner_req",
 } as const;
 
-/** Robot DDS topics accessible via WebRTC */
+/**
+ * Robot DDS topics accessible via WebRTC. Rates observed on a Go2 Pro on
+ * firmware 1.1.15: `LF_SPORT_MOD_STATE` ~20 Hz, `ROBOT_POSE` ~19 Hz,
+ * `LOW_STATE` ~1 Hz (joint `q` only, no `dq`), `SPORT_MOD_STATE` silent.
+ */
 export const RtcTopic = {
   SPORT_REQUEST: "rt/api/sport/request",
   SPORT_RESPONSE: "rt/api/sport/response",
   SPORT_MOD_STATE: "rt/sportmodestate",
   LF_SPORT_MOD_STATE: "rt/lf/sportmodestate",
   LOW_STATE: "rt/lf/lowstate",
+  /** Odometry pose from the LiDAR unit */
+  ROBOT_POSE: "rt/utlidar/robot_pose",
   MULTIPLE_STATE: "rt/multiplestate",
   MOTION_SWITCHER_REQUEST: "rt/api/motion_switcher/request",
   MOTION_SWITCHER_RESPONSE: "rt/api/motion_switcher/response",
