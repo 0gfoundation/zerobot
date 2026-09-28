@@ -295,6 +295,15 @@ const RESET_COMMAND: Record<string, (conn: Go2Connection) => void> = {
 const LIE_DOWN_MS = 2500;
 
 /**
+ * Go2 commands that end in a pose a recovery stand can't leave cleanly. From
+ * a sit, RecoveryStand treats the pose as a fall and does a recovery roll, so
+ * the recorder sends the matching exit command after each run instead.
+ */
+const GO2_EXIT_COMMANDS: Record<string, { apiId: SportCommand; waitMs: number }> = {
+  Sit: { apiId: SportCommand.RiseSit, waitMs: 2500 },
+};
+
+/**
  * Put the robot in its starting pose before a run. A recovery stand from
  * standing leaves the feet wherever the last run put them. Lying down and
  * standing back up puts them in the default stance every time.
@@ -506,6 +515,16 @@ async function main(): Promise<void> {
     }
   });
 
+  /** Exit command owed by the last trick, sent before the robot is next reset */
+  let pendingExit: { apiId: SportCommand; waitMs: number } | null = null;
+  const exitPose = async () => {
+    if (!pendingExit) return;
+    const { apiId, waitMs } = pendingExit;
+    pendingExit = null;
+    conn.sportCommand(apiId);
+    await sleep(waitMs);
+  };
+
   /** Runs a send and, while recording, logs it on the timeline */
   const send = (name: string, fn: () => void) => {
     fn();
@@ -622,6 +641,7 @@ async function main(): Promise<void> {
           await sleep(EXTRA_TIME);
         } else {
           send(cmd.name, () => cmd.trigger(conn));
+          if (ROBOT_TYPE === "go2") pendingExit = GO2_EXIT_COMMANDS[cmd.name] ?? null;
           await sleep(cmd.estimatedDurationMs + EXTRA_TIME);
         }
 
@@ -652,6 +672,8 @@ async function main(): Promise<void> {
           .join(", ");
         const responses = events.filter((e) => e.kind === "response").length;
         console.log(`  Saved ${ROBOT_TYPE}/${path.basename(outFile)}: ${counts}, ${responses} responses`);
+
+        await exitPose();
       }
     }
 
@@ -660,6 +682,7 @@ async function main(): Promise<void> {
   } finally {
     rl?.close();
     // Return to stand, including when a recording failed partway
+    await exitPose();
     resetCommand(conn);
     await sleep(2000);
     await conn.disconnect();
