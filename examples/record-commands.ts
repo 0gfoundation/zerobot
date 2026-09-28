@@ -59,8 +59,15 @@ const EXTRA_TIME = parseInt(getArg("extra", "1500"));
 const COMMANDS_FILTER = getArg("commands", "all");
 const REPEAT = parseInt(getArg("repeat", "1"));
 const CONFIRM = !args.includes("--yes");
+const RESET_MODE = getArg("reset", "stand");
 
-if (!ROBOT_TYPE || !["go2", "g1"].includes(ROBOT_TYPE) || !(REPEAT >= 1)) {
+if (
+  !ROBOT_TYPE ||
+  !["go2", "g1"].includes(ROBOT_TYPE) ||
+  !(REPEAT >= 1) ||
+  !["stand", "lie"].includes(RESET_MODE) ||
+  (RESET_MODE === "lie" && ROBOT_TYPE !== "go2")
+) {
   console.log("Usage: npx tsx record-commands.ts --robot <go2|g1> [options]");
   console.log("");
   console.log("Options:");
@@ -68,6 +75,8 @@ if (!ROBOT_TYPE || !["go2", "g1"].includes(ROBOT_TYPE) || !(REPEAT >= 1)) {
   console.log("  --commands <name,...>    Record specific commands only");
   console.log("  --repeat <n>            Runs per command, staggered against the ~1 Hz joint samples (default: 1)");
   console.log("  --yes                   Don't wait for Enter before each run");
+  console.log("  --reset <stand|lie>     Before each run: recovery stand, or (Go2 only) lie down and stand up");
+  console.log("                          for a consistent starting stance, ~3s slower (default: stand)");
   console.log("  --settle <ms>           Wait time before each command (default: 2000)");
   console.log("  --extra <ms>            Extra recording time after command (default: 1500)");
   process.exit(1);
@@ -281,6 +290,23 @@ const RESET_COMMAND: Record<string, (conn: Go2Connection) => void> = {
   go2: (conn) => conn.sportCommand(SportCommand.RecoveryStand),
   g1: (conn) => sendG1SportCommand(conn, 7101, { data: 4 }), // LockStanding
 };
+
+/** How long the Go2 takes to lie down before it can stand back up */
+const LIE_DOWN_MS = 2500;
+
+/**
+ * Put the robot in its starting pose before a run. A recovery stand from
+ * standing leaves the feet wherever the last run put them. Lying down and
+ * standing back up puts them in the default stance every time.
+ */
+async function resetRobot(conn: Go2Connection, resetCommand: (conn: Go2Connection) => void): Promise<void> {
+  if (RESET_MODE === "lie") {
+    conn.sportCommand(SportCommand.StandDown);
+    await sleep(LIE_DOWN_MS);
+  }
+  resetCommand(conn);
+  await sleep(SETTLE_TIME);
+}
 
 // ---- G1 Command Helpers ----
 
@@ -544,9 +570,7 @@ async function main(): Promise<void> {
           }
         }
 
-        // Reset to standing position
-        resetCommand(conn);
-        await sleep(SETTLE_TIME);
+        await resetRobot(conn, resetCommand);
 
         // Stagger the send against the joint samples
         await nextJointSample();
