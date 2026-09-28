@@ -48,6 +48,8 @@
 			cameraPos: [number, number, number];
 			targetY: number;
 			standPose: RobotPose;
+			/** Foot links (at the centre of each foot sphere) and the sphere radius, for grounding */
+			feet?: { links: string[]; radius: number };
 		}
 	> = {
 		go2: {
@@ -55,6 +57,7 @@
 			meshPath: '/models/go2/',
 			cameraPos: [0.85, 0.55, 0.85],
 			targetY: 0.2,
+			feet: { links: ['FR_foot', 'FL_foot', 'RR_foot', 'RL_foot'], radius: 0.022 },
 			standPose: {
 				position: [0, 0, 0.31],
 				joints: Object.fromEntries(
@@ -76,8 +79,19 @@
 	};
 
 	/**
+	 * A recorded base height more than this above the grounded height means
+	 * the robot is airborne (jumps, flips), so the recording wins.
+	 */
+	const AIRBORNE_M = 0.05;
+
+	/**
 	 * Move the robot. Unset fields keep their current value. The camera
 	 * follows the base so walking recordings stay in view.
+	 *
+	 * When a position is given, the base is raised or lowered so the lowest
+	 * foot rests on the grid, unless the recorded height is clearly airborne.
+	 * Recorded body height and merged joint angles come from different runs,
+	 * so taken as-is the feet can sink below the ground or float above it.
 	 */
 	export function setPose(pose: RobotPose) {
 		if (!robot) return;
@@ -86,6 +100,22 @@
 		}
 		if (pose.position) robot.position.set(...pose.position);
 		if (pose.quaternion) robot.quaternion.set(...pose.quaternion);
+
+		const feet = ROBOT_CONFIGS[getRobotKey(robotType)]?.feet;
+		if (pose.position && feet) {
+			robot.updateMatrixWorld(true);
+			const point = new THREE.Vector3();
+			const lowestFoot = Math.min(
+				...feet.links
+					.map((name) => robot!.links[name])
+					.filter(Boolean)
+					.map((link) => world.worldToLocal(link.getWorldPosition(point)).z)
+			);
+			if (Number.isFinite(lowestFoot)) {
+				const groundedZ = robot.position.z - (lowestFoot - feet.radius);
+				if (robot.position.z - groundedZ < AIRBORNE_M) robot.position.z = groundedZ;
+			}
+		}
 
 		// Keep the camera's offset from the robot as the base moves
 		const base = robot.getWorldPosition(new THREE.Vector3());
