@@ -147,6 +147,9 @@
 		fillLight.position.set(-2, 1, -1);
 		scene.add(fillLight);
 
+		// Sky/ground fill so surfaces facing away from the key light keep their shape
+		scene.add(new THREE.HemisphereLight(0xffffff, 0x303048, 1.2));
+
 		const gridHelper = new THREE.GridHelper(2, 20, 0x333355, 0x222240);
 		scene.add(gridHelper);
 
@@ -198,9 +201,10 @@
 					if ((child as THREE.Mesh).isMesh) {
 						const mesh = child as THREE.Mesh;
 						mesh.material = new THREE.MeshStandardMaterial({
-							color: 0x2a2a4a,
-							metalness: 0.3,
-							roughness: 0.6
+							// Light grey, close to the real robots, so the model stands out on the dark background
+							color: 0xb4b8c4,
+							metalness: 0.2,
+							roughness: 0.55
 						});
 						mesh.castShadow = true;
 						mesh.receiveShadow = true;
