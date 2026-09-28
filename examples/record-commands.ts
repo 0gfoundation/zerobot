@@ -1,9 +1,11 @@
 /**
- * Record joint state data from Unitree robots while performing each command.
+ * Record robot state from Unitree robots while performing each command.
  * Supports Go2 Pro and G1 Basic.
  *
- * Connects via WebRTC, subscribes to low-level state, triggers each command
- * sequentially, and saves joint angle data as JSON files.
+ * Connects via WebRTC, subscribes to the robot's state topics, triggers each
+ * command sequentially, and saves one JSON file per command holding the raw
+ * state payloads, the commands sent and the robot's responses. The run stops
+ * if joint data isn't arriving, rather than saving empty recordings.
  *
  * Usage:
  *   ROBOT_IP=192.168.123.18 npx tsx record-commands.ts --robot go2
@@ -320,30 +322,47 @@ function sendG1Joystick(conn: Go2Connection, lx: number, ly: number, rx: number,
   (conn as any).sendRaw(msg);
 }
 
-// ---- Recording Types ----
+// ---- Recording ----
 
-interface JointFrame {
+/**
+ * State topics captured per robot. No data on a `required` topic stops the
+ * run; no data on an `optional` topic only warns.
+ */
+const STATE_TOPICS: Record<string, { required: string[]; optional: string[] }> = {
+  go2: { required: [RtcTopic.LOW_STATE], optional: [RtcTopic.SPORT_MOD_STATE] },
+  g1: { required: [RtcTopic.LOW_STATE], optional: [] },
+};
+
+/** How long to wait for the first message on each state topic after subscribing */
+const STREAM_TIMEOUT_MS = 5000;
+
+interface RecordedMessage {
   /** Milliseconds since recording started */
   t: number;
-  /** Motor positions */
-  q: number[];
-  /** Motor velocities */
-  dq: number[];
-  /** IMU quaternion [w, x, y, z] */
-  imu_quat?: number[];
-  /** IMU angular velocity [x, y, z] */
-  imu_gyro?: number[];
+  /** Payload exactly as the robot sent it */
+  data: unknown;
 }
+
+type RecordingEvent =
+  | { t: number; kind: "sent"; name: string }
+  | { t: number; kind: "response"; topic: string; data: unknown };
 
 interface CommandRecording {
   robot: string;
   command: string;
   estimatedDurationMs: number;
   recordedAt: string;
-  frameCount: number;
   durationMs: number;
+  /** Leading entries of lowstate `motor_state` that are real joints; the rest are unused slots */
   motorCount: number;
-  frames: JointFrame[];
+  /** Raw payloads per state topic, in arrival order */
+  streams: Record<string, RecordedMessage[]>;
+  /** Commands sent and robot responses received while recording */
+  events: RecordingEvent[];
+}
+
+interface ResponsePayload {
+  header?: { identity?: { api_id?: number }; status?: { code?: number } };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -356,6 +375,8 @@ async function main(): Promise<void> {
   const allCommands = ALL_COMMANDS[ROBOT_TYPE];
   const motorCount = MOTOR_COUNT[ROBOT_TYPE];
   const resetCommand = RESET_COMMAND[ROBOT_TYPE];
+  const { required, optional } = STATE_TOPICS[ROBOT_TYPE];
+  const stateTopics = [...required, ...optional];
   const commandNameMap = new Map(allCommands.map((c) => [c.name, c]));
 
   // Filter commands
@@ -390,125 +411,135 @@ async function main(): Promise<void> {
   await conn.connect();
   console.log("Connected!\n");
 
-  // Subscribe to low-level state
-  let currentFrames: JointFrame[] = [];
+  let streams: Record<string, RecordedMessage[]> = {};
+  let events: RecordingEvent[] = [];
   let recording = false;
   let recordingStart = 0;
+  const seenTopics = new Set<string>();
+  const elapsed = () => Math.round((performance.now() - recordingStart) * 10) / 10;
 
   conn.on("message", (msg: Record<string, unknown>) => {
-    if (!recording) return;
     const topic = msg.topic as string;
-    if (topic !== RtcTopic.LOW_STATE) return;
-
-    const data = msg.data as Record<string, unknown>;
-    if (!data) return;
-
-    const frame: JointFrame = {
-      t: Date.now() - recordingStart,
-      q: [],
-      dq: [],
-    };
-
-    // Extract motor data
-    const motorState = data.motor_state as Array<Record<string, number>> | undefined;
-    if (motorState && Array.isArray(motorState)) {
-      for (let i = 0; i < Math.min(motorState.length, motorCount); i++) {
-        frame.q.push(motorState[i]?.q ?? 0);
-        frame.dq.push(motorState[i]?.dq ?? 0);
+    if (msg.type === DataChannelType.MSG && stateTopics.includes(topic)) {
+      seenTopics.add(topic);
+      if (recording) streams[topic].push({ t: elapsed(), data: msg.data });
+    } else if (msg.type === DataChannelType.RESPONSE && recording) {
+      events.push({ t: elapsed(), kind: "response", topic, data: msg.data });
+      const header = (msg.data as ResponsePayload | undefined)?.header;
+      const code = header?.status?.code;
+      if (code !== undefined && code !== 0) {
+        console.warn(`  Robot returned status ${code} for api_id ${header?.identity?.api_id}`);
       }
-    }
-
-    // Extract IMU data
-    const imuState = data.imu_state as Record<string, unknown> | undefined;
-    if (imuState) {
-      const quat = imuState.quaternion as number[] | undefined;
-      if (quat) frame.imu_quat = quat;
-      const gyro = imuState.gyroscope as number[] | undefined;
-      if (gyro) frame.imu_gyro = gyro;
-    }
-
-    if (frame.q.length > 0) {
-      currentFrames.push(frame);
     }
   });
 
-  conn.subscribe(RtcTopic.LOW_STATE);
-  await sleep(1000);
+  /** Runs a send and, while recording, logs it on the timeline */
+  const send = (name: string, fn: () => void) => {
+    fn();
+    if (recording) events.push({ t: elapsed(), kind: "sent", name });
+  };
 
-  // Record each command
-  for (const cmd of commandsToRecord) {
-    const outFile = path.join(
-      RECORDINGS_DIR,
-      `${cmd.name.toLowerCase()}.json`,
-    );
-
-    if (COMMANDS_FILTER === "all" && fs.existsSync(outFile)) {
-      console.log(`Skipping ${cmd.name} (already recorded)`);
-      continue;
+  try {
+    // Wait for data on every state topic before moving the robot
+    for (const topic of stateTopics) conn.subscribe(topic);
+    const deadline = Date.now() + STREAM_TIMEOUT_MS;
+    while (Date.now() < deadline && !stateTopics.every((t) => seenTopics.has(t))) {
+      await sleep(100);
+    }
+    const missingRequired = required.filter((t) => !seenTopics.has(t));
+    if (missingRequired.length > 0) {
+      throw new Error(
+        `No data on ${missingRequired.join(", ")} within ${STREAM_TIMEOUT_MS}ms of subscribing. Nothing was recorded.`,
+      );
+    }
+    for (const topic of optional.filter((t) => !seenTopics.has(t))) {
+      console.warn(`Warning: no data on ${topic}; recordings will not include it.\n`);
     }
 
-    console.log(`Recording ${cmd.name} (estimated ${cmd.estimatedDurationMs}ms)...`);
+    // Record each command
+    for (const cmd of commandsToRecord) {
+      const outFile = path.join(
+        RECORDINGS_DIR,
+        `${cmd.name.toLowerCase()}.json`,
+      );
 
-    // Reset to standing position
-    resetCommand(conn);
-    await sleep(SETTLE_TIME);
-
-    // Start recording
-    currentFrames = [];
-    recordingStart = Date.now();
-    recording = true;
-
-    // Trigger the command
-    if (cmd.continuous) {
-      // Continuous command: send repeatedly every 500ms, then stop
-      const endTime = Date.now() + cmd.estimatedDurationMs;
-      while (Date.now() < endTime) {
-        cmd.trigger(conn);
-        await sleep(500);
+      if (COMMANDS_FILTER === "all" && fs.existsSync(outFile)) {
+        console.log(`Skipping ${cmd.name} (already recorded)`);
+        continue;
       }
-      // Send StopMove for Go2, or zero joystick for G1
-      if (ROBOT_TYPE === "go2") {
-        conn.sportCommand(SportCommand.StopMove);
+
+      console.log(`Recording ${cmd.name} (estimated ${cmd.estimatedDurationMs}ms)...`);
+
+      // Reset to standing position
+      resetCommand(conn);
+      await sleep(SETTLE_TIME);
+
+      // Start recording
+      streams = Object.fromEntries(stateTopics.map((t) => [t, []]));
+      events = [];
+      recordingStart = performance.now();
+      recording = true;
+
+      // Trigger the command
+      if (cmd.continuous) {
+        // Continuous command: send repeatedly every 500ms, then stop
+        const endTime = Date.now() + cmd.estimatedDurationMs;
+        while (Date.now() < endTime) {
+          send(cmd.name, () => cmd.trigger(conn));
+          await sleep(500);
+        }
+        // Send StopMove for Go2, or zero joystick for G1
+        if (ROBOT_TYPE === "go2") {
+          send("StopMove", () => conn.sportCommand(SportCommand.StopMove));
+        } else {
+          send("JoystickZero", () => sendG1Joystick(conn, 0, 0, 0, 0));
+        }
+        await sleep(EXTRA_TIME);
       } else {
-        sendG1Joystick(conn, 0, 0, 0, 0);
+        send(cmd.name, () => cmd.trigger(conn));
+        await sleep(cmd.estimatedDurationMs + EXTRA_TIME);
       }
-      await sleep(EXTRA_TIME);
-    } else {
-      cmd.trigger(conn);
-      await sleep(cmd.estimatedDurationMs + EXTRA_TIME);
+
+      // Stop recording
+      recording = false;
+      const durationMs = Math.round(performance.now() - recordingStart);
+
+      const missing = required.filter((t) => streams[t].length === 0);
+      if (missing.length > 0) {
+        throw new Error(
+          `No data on ${missing.join(", ")} while recording ${cmd.name}, so it was not saved. The stream stopped mid-run.`,
+        );
+      }
+
+      const result: CommandRecording = {
+        robot: ROBOT_TYPE,
+        command: cmd.name,
+        estimatedDurationMs: cmd.estimatedDurationMs,
+        recordedAt: new Date().toISOString(),
+        durationMs,
+        motorCount,
+        streams,
+        events,
+      };
+
+      fs.writeFileSync(outFile, JSON.stringify(result));
+      const counts = stateTopics
+        .map((t) => `${t} ${streams[t].length} (${Math.round(streams[t].length / (durationMs / 1000))} Hz)`)
+        .join(", ");
+      const responses = events.filter((e) => e.kind === "response").length;
+      console.log(`  Saved ${ROBOT_TYPE}/${path.basename(outFile)}: ${counts}, ${responses} responses`);
+
+      await sleep(1000);
     }
 
-    // Stop recording
-    recording = false;
-    const durationMs = Date.now() - recordingStart;
-
-    const result: CommandRecording = {
-      robot: ROBOT_TYPE,
-      command: cmd.name,
-      estimatedDurationMs: cmd.estimatedDurationMs,
-      recordedAt: new Date().toISOString(),
-      frameCount: currentFrames.length,
-      durationMs,
-      motorCount,
-      frames: currentFrames,
-    };
-
-    fs.writeFileSync(outFile, JSON.stringify(result, null, 2));
-    console.log(
-      `  Saved ${currentFrames.length} frames (${durationMs}ms) → ${ROBOT_TYPE}/${path.basename(outFile)}`,
-    );
-
-    await sleep(1000);
+    console.log("\nAll recordings complete!");
+    console.log(`Output directory: ${RECORDINGS_DIR}`);
+  } finally {
+    // Return to stand, including when a recording failed partway
+    resetCommand(conn);
+    await sleep(2000);
+    await conn.disconnect();
   }
-
-  // Return to stand
-  resetCommand(conn);
-  await sleep(2000);
-
-  console.log("\nAll recordings complete!");
-  console.log(`Output directory: ${RECORDINGS_DIR}`);
-
-  await conn.disconnect();
   process.exit(0);
 }
 
