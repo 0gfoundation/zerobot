@@ -25,7 +25,8 @@
 
 	let playing = $state(true);
 	let speed = $state(1);
-	let smoothingMs = $state(0);
+	// Light looked best by eye on the 10-run recordings
+	let smoothingMs = $state(60);
 	let t = $state(0);
 
 	let viewer = $state<ReturnType<typeof RobotViewer> | null>(null);
