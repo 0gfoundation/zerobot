@@ -21,9 +21,10 @@
 
 <header class="border-b border-line bg-surface-secondary">
 	<div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-		<div>
-			<h1 class="text-lg font-bold text-accent">Zerobot</h1>
-		</div>
+		<nav class="flex items-baseline gap-5">
+			<a href="/" class="text-lg font-bold text-accent">Zerobot</a>
+			<a href="/recordings" class="text-sm text-secondary transition hover:text-default">Recordings</a>
+		</nav>
 
 		<div class="flex items-center gap-3">
 			<NetworkSwitcher />

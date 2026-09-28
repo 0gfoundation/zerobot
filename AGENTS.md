@@ -90,6 +90,7 @@ The SDK exposes four entry points (see `exports` in `sdk/package.json`), split a
 - **`lib/stores/`** — Class-based reactive state: `wallet.svelte.ts` (wagmi wallet), `robot.svelte.ts` (WebRTC connection), `network.svelte.ts` (chain selection)
 - **`lib/networks.ts`** — Network definitions with per-network contract addresses. Adding a network = adding an entry here.
 - **`routes/api/negotiate/`** — SvelteKit server endpoint proxying SDP exchange to robot (browser can't reach robot directly due to CORS)
+- **`routes/recordings/`** — Plays back `examples/record-commands.ts` output and follows new runs live. Files come from `routes/api/recordings/`, which reads `examples/recordings` (override with `RECORDINGS_DIR`). `lib/playback.ts` merges a command's staggered runs into one joint timeline, since joint state arrives at ~1 Hz over WebRTC.
 - **`lib/chain.ts`** — `getChainClient()` factory: builds a fresh `ChainClient` from the current wagmi `walletClient` + active network on each call. The dashboard performs all on-chain operations through the SDK; there are no duplicate ABIs or contract wrappers in the dashboard.
 - **Click-outside handlers:** Use `pointerdown` (not `click` or `mousedown`) — it fires on both desktop and touch devices, where the others have inconsistent behavior across modalities.
 

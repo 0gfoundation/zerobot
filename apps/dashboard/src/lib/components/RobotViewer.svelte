@@ -1,16 +1,30 @@
+<script module lang="ts">
+	export interface RobotPose {
+		/** Joint angles in radians, keyed by URDF joint name */
+		joints?: Record<string, number>;
+		/** Base position in metres, Z-up */
+		position?: [number, number, number];
+		/** Base orientation as [x, y, z, w], Z-up */
+		quaternion?: [number, number, number, number];
+	}
+</script>
+
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import * as THREE from 'three';
 	import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 	import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-	import URDFLoader from 'urdf-loader';
+	import URDFLoader, { type URDFRobot } from 'urdf-loader';
 
 	let {
 		robotType = 'go2_pro',
-		class: className = ''
+		class: className = '',
+		onload
 	}: {
 		robotType?: string;
 		class?: string;
+		/** Called once the model has loaded and `setPose` will take effect */
+		onload?: () => void;
 	} = $props();
 
 	let container: HTMLDivElement;
@@ -19,28 +33,66 @@
 	let camera: THREE.PerspectiveCamera;
 	let controls: OrbitControls;
 	let animationId: number;
-	let robot: THREE.Object3D | null = null;
+	/** URDFs are Z-up (ROS convention). This group turns them upright in three.js's Y-up scene. */
+	let world: THREE.Group;
+	let robot: URDFRobot | null = null;
 	let loadGeneration = 0;
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
 	const ROBOT_CONFIGS: Record<
 		string,
-		{ urdf: string; meshPath: string; cameraPos: [number, number, number]; targetY: number }
+		{
+			urdf: string;
+			meshPath: string;
+			cameraPos: [number, number, number];
+			targetY: number;
+			standPose: RobotPose;
+		}
 	> = {
 		go2: {
 			urdf: '/models/go2/go2.urdf',
 			meshPath: '/models/go2/',
-			cameraPos: [0.6, 0.4, 0.6],
-			targetY: 0.15
+			cameraPos: [0.85, 0.55, 0.85],
+			targetY: 0.2,
+			standPose: {
+				position: [0, 0, 0.31],
+				joints: Object.fromEntries(
+					['FR', 'FL', 'RR', 'RL'].flatMap((leg) => [
+						[`${leg}_hip_joint`, 0],
+						[`${leg}_thigh_joint`, 0.67],
+						[`${leg}_calf_joint`, -1.3]
+					])
+				)
+			}
 		},
 		g1: {
 			urdf: '/models/g1/g1.urdf',
 			meshPath: '/models/g1/',
 			cameraPos: [1.5, 1.0, 1.5],
-			targetY: 0.5
+			targetY: 0.5,
+			standPose: { position: [0, 0, 0.79] }
 		}
 	};
+
+	/**
+	 * Move the robot. Unset fields keep their current value. The camera
+	 * follows the base so walking recordings stay in view.
+	 */
+	export function setPose(pose: RobotPose) {
+		if (!robot) return;
+		for (const [name, value] of Object.entries(pose.joints ?? {})) {
+			robot.setJointValue(name, value);
+		}
+		if (pose.position) robot.position.set(...pose.position);
+		if (pose.quaternion) robot.quaternion.set(...pose.quaternion);
+
+		// Keep the camera's offset from the robot as the base moves
+		const base = robot.getWorldPosition(new THREE.Vector3());
+		const delta = new THREE.Vector3(base.x - controls.target.x, 0, base.z - controls.target.z);
+		controls.target.add(delta);
+		camera.position.add(delta);
+	}
 
 	function getRobotKey(type: string): string {
 		if (type.startsWith('g1')) return 'g1';
@@ -98,6 +150,10 @@
 		const gridHelper = new THREE.GridHelper(2, 20, 0x333355, 0x222240);
 		scene.add(gridHelper);
 
+		world = new THREE.Group();
+		world.rotation.x = -Math.PI / 2;
+		scene.add(world);
+
 		const resizeObserver = new ResizeObserver(() => {
 			if (!container) return;
 			camera.aspect = container.clientWidth / container.clientHeight;
@@ -124,7 +180,7 @@
 		}
 
 		if (robot) {
-			scene.remove(robot);
+			world.remove(robot);
 			robot = null;
 		}
 
@@ -157,15 +213,17 @@
 			});
 		};
 
-		loader.load(config.urdf, (result: any) => {
+		loader.load(config.urdf, (result: URDFRobot) => {
 			if (generation !== loadGeneration) return;
 
 			robot = result;
-			scene.add(robot!);
+			world.add(robot);
 
 			camera.position.set(...config.cameraPos);
 			controls.target.set(0, config.targetY, 0);
+			setPose(config.standPose);
 			controls.update();
+			onload?.();
 
 			loading = false;
 		}, undefined, (err: any) => {
