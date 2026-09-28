@@ -3,3 +3,7 @@ packages:
   - sdk
   - examples
   - apps/dashboard
+allowBuilds:
+  esbuild: true
+  keccak: false
+  secp256k1: false
