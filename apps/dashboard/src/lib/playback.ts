@@ -161,15 +161,49 @@ export function buildTimeline(file: RecordingFile): Timeline {
 	return {
 		command: file.command,
 		runCount: runs.length,
-		startMs: times.length ? Math.min(0, ...times) : 0,
+		// Playback starts when the command is sent. Samples from before it stay
+		// in the timeline so the opening pose interpolates from the resting stance.
+		startMs: 0,
 		endMs: Math.max(...runs.map((r) => r.durationMs), ...times, 0),
 		joints,
 		body
 	};
 }
 
-/** Pose at `t` ms since send, interpolating joints and body linearly and holding the ends */
-export function samplePose(timeline: Timeline, t: number): Pose | null {
+/**
+ * Joint angle `k` at `t` by local linear regression with a Gaussian kernel.
+ * Averages disagreement between runs while keeping slopes, so it flattens
+ * real motion less than a plain moving average.
+ */
+function smoothedJoint(joints: JointSample[], t: number, k: number, sigmaMs: number): number | null {
+	let sw = 0;
+	let swx = 0;
+	let swy = 0;
+	let swxx = 0;
+	let swxy = 0;
+	for (let i = Math.max(lastAtOrBefore(joints, t - 3 * sigmaMs), 0); i < joints.length; i++) {
+		const x = joints[i].t - t;
+		if (x > 3 * sigmaMs) break;
+		const w = Math.exp(-(x * x) / (2 * sigmaMs * sigmaMs));
+		const y = joints[i].q[k];
+		sw += w;
+		swx += w * x;
+		swy += w * y;
+		swxx += w * x * x;
+		swxy += w * x * y;
+	}
+	// Too sparse here (few runs, narrow kernel): let the caller interpolate linearly
+	if (sw < 1e-3) return null;
+	const det = sw * swxx - swx * swx;
+	return det > 1e-9 ? (swy * swxx - swx * swxy) / det : swy / sw;
+}
+
+/**
+ * Pose at `t` ms since send, holding the ends. Joints interpolate linearly,
+ * or with `smoothingMs` > 0 are smoothed over that kernel width. Body pose
+ * always interpolates linearly, since it comes from one run at ~20 Hz.
+ */
+export function samplePose(timeline: Timeline, t: number, smoothingMs = 0): Pose | null {
 	const { joints, body } = timeline;
 	if (joints.length === 0) return null;
 
@@ -177,7 +211,10 @@ export function samplePose(timeline: Timeline, t: number): Pose | null {
 	const a = joints[Math.max(i, 0)];
 	const b = joints[Math.min(i + 1, joints.length - 1)];
 	const f = i < 0 || b.t === a.t ? (i < 0 ? 0 : 1) : (t - a.t) / (b.t - a.t);
-	const q = a.q.map((v, k) => v + (b.q[k] - v) * f);
+	const q = a.q.map((v, k) => {
+		const smoothed = smoothingMs > 0 ? smoothedJoint(joints, t, k, smoothingMs) : null;
+		return smoothed ?? v + (b.q[k] - v) * f;
+	});
 
 	let position: Pose['position'] = [0, 0, 0.31];
 	let quaternion: Pose['quaternion'] = [0, 0, 0, 1];
