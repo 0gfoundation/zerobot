@@ -9,6 +9,7 @@
  *   npx tsx mock-robot.ts --port 9991
  */
 import http from "node:http";
+import { pathToFileURL } from "node:url";
 import forge from "node-forge";
 import {
   aesEcbEncrypt,
@@ -358,10 +359,11 @@ export function startMockRobot(port = 9991): http.Server {
   return server;
 }
 
-// Run directly
+// Run directly. Compares this module's own URL, since another program's
+// entry can also end in server.js (Next's dev server does).
 const isMain =
-  process.argv[1]?.endsWith("server.ts") ||
-  process.argv[1]?.endsWith("server.js");
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   const portArg = process.argv.indexOf("--port");
   const port = portArg >= 0 ? parseInt(process.argv[portArg + 1]) : 9991;

@@ -12,8 +12,9 @@ export interface ChainConfig {
   signer?: Signer;
   /**
    * A viem `WalletClient` (e.g. from wagmi). Adapted to an ethers `Signer`
-   * internally — see `walletClientToSigner`. Provide exactly one of
-   * `signer`, `walletClient`, or `privateKey`.
+   * internally — see `walletClientToSigner`. Provide at most one of
+   * `signer`, `walletClient`, or `privateKey`. With none, `ChainClient` is
+   * read-only.
    */
   walletClient?: WalletClient;
   /**
@@ -22,6 +23,14 @@ export interface ChainConfig {
    * Galileo makes a block about every 0.5s.
    */
   pollingIntervalMs?: number;
+}
+
+/** Mirrors `IRobotCommandDispatcher.CommandStatus`. */
+export enum CommandStatus {
+  Pending = 0,
+  Executed = 1,
+  Failed = 2,
+  Expired = 3,
 }
 
 export interface OnChainCommand {
@@ -33,7 +42,9 @@ export interface OnChainCommand {
   /** Free text from the sender, e.g. their name. Empty when none was given. */
   note: string;
   value: bigint;
+  /** Block timestamp of the dispatch, in seconds. */
   timestamp: bigint;
+  status: CommandStatus;
 }
 
 /** Options for dispatching commands on-chain. */

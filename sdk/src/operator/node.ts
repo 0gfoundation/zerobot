@@ -87,6 +87,9 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     this.connection = new Go2Connection(robotConfig);
     this.client = new ChainClient(chainConfig);
     this.listener = new ChainListener(this.client, robotId);
+    if (!this.client.signer) {
+      throw new Error("OperatorNode: chainConfig needs the owner's wallet to submit receipts");
+    }
     this.receiptDispatcher = this.client.dispatcher.connect(
       new NonceManager(this.client.signer),
     ) as Contract;

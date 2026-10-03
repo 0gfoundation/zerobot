@@ -1,6 +1,7 @@
 import { ethers, type ContractTransactionReceipt } from "ethers";
 import type {
   ChainConfig,
+  CommandStatus,
   DispatchOptions,
   OnChainCommand,
   Robot,
@@ -14,10 +15,14 @@ import { waitForReceipt } from "./wait.js";
  * Client for interacting with the 0G Robot smart contracts. Write methods
  * auto-await `tx.wait()` and resolve to the receipt; read methods return the
  * raw value.
+ *
+ * Without a wallet in the config (`signer`, `walletClient` or `privateKey`)
+ * the client is read-only, and write methods reject.
  */
 export class ChainClient {
   public readonly provider: ethers.JsonRpcProvider;
-  public readonly signer: ethers.Signer;
+  /** Undefined for a read-only client. */
+  public readonly signer: ethers.Signer | undefined;
   public readonly registry: ethers.Contract;
   public readonly dispatcher: ethers.Contract;
 
@@ -29,17 +34,23 @@ export class ChainClient {
 
     // Pass `this.provider` so the privateKey path reuses it instead of
     // constructing a second JsonRpcProvider against the same RPC.
-    this.signer = resolveSigner(config, "ChainConfig", this.provider);
+    const hasWallet = Boolean(
+      config.signer || config.walletClient || config.privateKey,
+    );
+    this.signer = hasWallet
+      ? resolveSigner(config, "ChainConfig", this.provider)
+      : undefined;
 
+    const runner = this.signer ?? this.provider;
     this.registry = new ethers.Contract(
       config.registryAddress,
       REGISTRY_ABI,
-      this.signer,
+      runner,
     );
     this.dispatcher = new ethers.Contract(
       config.dispatcherAddress,
       DISPATCHER_ABI,
-      this.signer,
+      runner,
     );
   }
 
@@ -341,5 +352,6 @@ export function toOnChainCommand(cmd: Record<string, unknown>): OnChainCommand {
     note: cmd.note as string,
     value: cmd.value as bigint,
     timestamp: cmd.timestamp as bigint,
+    status: Number(cmd.status) as CommandStatus,
   };
 }

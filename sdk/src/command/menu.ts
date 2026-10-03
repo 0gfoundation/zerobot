@@ -7,6 +7,8 @@ import { getSchemasForRobotType } from "./schemas/index.js";
  * today and in 0G Storage under the robot's `storageRoot` later.
  */
 export interface RobotMenu {
+  /** What the public calls the robot, e.g. "Larry". */
+  displayName?: string;
   items: RobotMenuItem[];
 }
 
