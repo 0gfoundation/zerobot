@@ -162,9 +162,11 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 				<ol className="mt-2 space-y-2 text-xl">
 					{[...upcoming.map((s) => s.entry), ...unplaced].slice(0, 6).map((e, i) => (
 						<li key={String(e.command.nonce)} className="flex justify-between gap-4">
-							<span className="truncate">{e.command.note || 'Anonymous'}</span>
+							<span className="truncate">
+								<span className="text-ink-muted">#{i + 1}</span> {e.command.note || 'Anonymous'}
+							</span>
 							<span className="shrink-0 text-ink-muted">
-								{labelFor(e.command.apiId)?.emoji} #{i + 1}
+								{labelFor(e.command.apiId)?.emoji} {labelFor(e.command.apiId)?.label}
 							</span>
 						</li>
 					))}
@@ -178,7 +180,9 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 							{done.map((e) => (
 								<li key={String(e.command.nonce)} className="flex justify-between gap-4">
 									<span className="truncate">{e.command.note || 'Anonymous'}</span>
-									<span className="shrink-0">{labelFor(e.command.apiId)?.emoji} ✓</span>
+									<span className="shrink-0">
+										{labelFor(e.command.apiId)?.emoji} {labelFor(e.command.apiId)?.label} ✓
+									</span>
 								</li>
 							))}
 						</ol>
