@@ -1,0 +1,10 @@
+Zerobot
+Copyright 2026 0G Foundation
+
+This product includes robot models (URDF files and meshes) derived from
+Unitree Robotics' unitree_ros (https://github.com/unitreerobotics/unitree_ros),
+Copyright (c) 2016-2022 HangZhou YuShu TECHNOLOGY CO.,LTD. ("Unitree Robotics"),
+licensed under the BSD 3-Clause License. See apps/dashboard/public/models/LICENSE.
+
+Wallet logos in apps/dashboard/public/wallets/ are trademarks of their
+respective owners and are used only to identify those wallets.
