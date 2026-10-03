@@ -76,7 +76,15 @@ export interface CommandSchema {
    */
   apiId: number;
   name: string;
+  /** Short name for end users, e.g. "Wave hello". Falls back to `name`. */
+  label?: string;
   description: string;
+  /**
+   * Command that returns the robot to standing once this one finishes, e.g.
+   * `RiseSit` after `Sit`. Operators send it straight after, so the next
+   * command always starts from the same pose.
+   */
+  exitApiId?: number;
   params?: {
     [key: string]: {
       type: string;
@@ -84,5 +92,11 @@ export interface CommandSchema {
       required?: boolean;
     };
   };
+  /**
+   * How long the move takes. For Go2 actions this is when the robot replies
+   * to the command, which it does once the move is done. Hello, Stretch and
+   * Sit are measured from 10-run recordings (Go2 Pro, firmware 1.1.15), the
+   * rest are estimates.
+   */
   estimatedDurationMs: number;
 }

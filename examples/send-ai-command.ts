@@ -11,15 +11,15 @@ import { AIBroker, Commander } from "@0g-foundation/zerobot-sdk";
 
 const {
   RPC_URL = "https://evmrpc-testnet.0g.ai",
-  PRIVATE_KEY,
+  SENDER_PRIVATE_KEY,
   REGISTRY_ADDRESS,
   DISPATCHER_ADDRESS,
   ROBOT_ID,
 } = process.env;
 
-if (!PRIVATE_KEY || !REGISTRY_ADDRESS || !DISPATCHER_ADDRESS || !ROBOT_ID) {
+if (!SENDER_PRIVATE_KEY || !REGISTRY_ADDRESS || !DISPATCHER_ADDRESS || !ROBOT_ID) {
   console.error(
-    "Missing env vars: PRIVATE_KEY, REGISTRY_ADDRESS, DISPATCHER_ADDRESS, ROBOT_ID",
+    "Missing env vars: SENDER_PRIVATE_KEY, REGISTRY_ADDRESS, DISPATCHER_ADDRESS, ROBOT_ID",
   );
   process.exit(1);
 }
@@ -34,7 +34,7 @@ async function main(): Promise<void> {
   }
 
   console.log("Initializing 0G Compute AI broker...");
-  const aiBroker = new AIBroker({ privateKey: PRIVATE_KEY, rpcUrl: RPC_URL });
+  const aiBroker = new AIBroker({ privateKey: SENDER_PRIVATE_KEY, rpcUrl: RPC_URL });
   await aiBroker.initialize();
 
   console.log(`Resolving prompt: "${prompt}"`);
@@ -51,7 +51,7 @@ async function main(): Promise<void> {
     rpcUrl: RPC_URL,
     registryAddress: REGISTRY_ADDRESS!,
     dispatcherAddress: DISPATCHER_ADDRESS!,
-    privateKey: PRIVATE_KEY,
+    privateKey: SENDER_PRIVATE_KEY,
   });
 
   console.log("Dispatching command batch on-chain...");

@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { env } from '$env/dynamic/private';
 
 /**
  * Where `examples/record-commands.ts` writes recordings. Defaults to the
@@ -7,7 +6,10 @@ import { env } from '$env/dynamic/private';
  * override with `RECORDINGS_DIR`.
  */
 export function recordingsDir(): string {
-	return path.resolve(env.RECORDINGS_DIR ?? path.join(process.cwd(), '../../examples/recordings'));
+	// Local mode only, so no need to trace these files into a deployment
+	return path.resolve(
+		/*turbopackIgnore: true*/ process.env.RECORDINGS_DIR ?? path.join(process.cwd(), '../../examples/recordings')
+	);
 }
 
 const SAFE_NAME = /^[a-z0-9_-]+$/i;
@@ -16,4 +18,10 @@ const SAFE_NAME = /^[a-z0-9_-]+$/i;
 export function recordingPath(robot: string, name: string): string | null {
 	if (!SAFE_NAME.test(robot) || !SAFE_NAME.test(name)) return null;
 	return path.join(recordingsDir(), robot, `${name}.json`);
+}
+
+export interface RecordingListing {
+	robot: string;
+	name: string;
+	mtimeMs: number;
 }

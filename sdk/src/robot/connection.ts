@@ -5,6 +5,7 @@ import { Go2Signaling } from "./signaling.js";
 import { handleValidationMessage } from "./validation.js";
 import { Heartbeat } from "./heartbeat.js";
 import {
+  generateMessageId,
   buildSportCommandMessage,
   buildVuiCommandMessage,
   buildMotionSwitcherMessage,
@@ -15,6 +16,11 @@ import {
 } from "./commands.js";
 import { getWebRTCProvider } from "./platform.js";
 import { DataChannelType } from "./constants.js";
+
+/** The part of a robot reply that `sportCommandAndWait` reads. */
+interface SportReply {
+  header?: { identity?: { id?: number }; status?: { code?: number } };
+}
 
 export interface Go2ConnectionEvents {
   connected: () => void;
@@ -55,6 +61,7 @@ export class Go2Connection extends EventEmitter<Go2ConnectionEvents> {
     this.signaling = new Go2Signaling(config.ip, {
       proxyUrl: config.signalingProxyUrl,
       deviceKey: config.deviceKey,
+      port: config.port,
     });
   }
 
@@ -155,6 +162,44 @@ export class Go2Connection extends EventEmitter<Go2ConnectionEvents> {
     parameters?: Record<string, unknown>,
   ): void {
     this.sendRaw(buildSportCommandMessage(apiId, parameters));
+  }
+
+  /**
+   * Send a sport command and resolve when the robot replies to it. For
+   * actions the Go2 replies once the move is done: in recordings the body
+   * stops 150-200ms after the reply (Hello ~4.7s, Stretch ~3.9s, Sit
+   * ~1.2s). Resolves with the reply's status code, `0` on success, or
+   * `null` if no reply arrives within `timeoutMs`.
+   *
+   * @throws If the data channel is not open.
+   */
+  sportCommandAndWait(
+    apiId: SportCommand,
+    parameters: Record<string, unknown> | undefined,
+    timeoutMs: number,
+  ): Promise<number | null> {
+    const id = generateMessageId();
+    return new Promise((resolve, reject) => {
+      const onMessage = (msg: Record<string, unknown>) => {
+        const header = (msg.data as SportReply | undefined)?.header;
+        if (header?.identity?.id !== id) return;
+        done(header.status?.code ?? 0);
+      };
+      const timer = setTimeout(() => done(null), timeoutMs);
+      const done = (code: number | null) => {
+        clearTimeout(timer);
+        this.off("message", onMessage);
+        resolve(code);
+      };
+      this.on("message", onMessage);
+      try {
+        this.sendRaw(buildSportCommandMessage(apiId, parameters, id));
+      } catch (err) {
+        clearTimeout(timer);
+        this.off("message", onMessage);
+        reject(err);
+      }
+    });
   }
 
   /**

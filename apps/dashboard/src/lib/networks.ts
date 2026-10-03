@@ -44,8 +44,8 @@ export const networks: Record<number, NetworkConfig> = {
 	[zeroGTestnet.id]: {
 		chain: zeroGTestnet,
 		contracts: {
-			registry: '0x2312cE812E35a9cBb65Fa692e566Df4C61D9Ba74',
-			dispatcher: '0xddc4C76Ea5bE99EC754a8de3FC470364aa29c0b8'
+			registry: '0x291162e93D7A80Eb8F738882a28a7a8A5FBA73bb',
+			dispatcher: '0x418bA7C231dac8Ef58b534BeE6adC50E703AA753'
 		}
 	}
 	// [zeroGMainnet.id]: {
@@ -57,5 +57,5 @@ export const networks: Record<number, NetworkConfig> = {
 	// }
 };
 
-export const supportedChains = Object.values(networks).map((n) => n.chain);
+export const supportedChains = Object.values(networks).map((n) => n.chain) as [Chain, ...Chain[]];
 export const defaultNetwork = networks[zeroGTestnet.id];

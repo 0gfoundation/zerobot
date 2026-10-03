@@ -22,7 +22,7 @@ pnpm monorepo with four workspaces:
 
 - **`sdk/`** (`@0g-foundation/zerobot-sdk`) — TypeScript SDK: WebRTC robot control, chain interaction, AI command resolution
 - **`contracts/`** (`@0g-foundation/zerobot-contracts`) — Solidity smart contracts (Hardhat): robot registry, command dispatcher with payments/receipts
-- **`apps/dashboard/`** (`@0g-foundation/zerobot-dashboard`) — SvelteKit 2 web UI: wallet connection, robot registration, WebRTC robot control
+- **`apps/dashboard/`** (`@0g-foundation/zerobot-dashboard`) — Next.js web app: the owners' dashboard, the public pay-to-move page and stage screen, and WebRTC robot control in local mode
 - **`examples/`** (`@0g-foundation/zerobot-examples`) — CLI usage examples (run with `npx tsx`)
 
 ## Build & Test Commands
@@ -41,7 +41,8 @@ pnpm test:watch         # vitest watch
 cd contracts
 pnpm compile            # hardhat compile
 pnpm test               # hardhat test
-pnpm deploy:testnet     # hardhat run scripts/deploy.ts --network galileo
+pnpm deploy:testnet     # deploy both contracts behind new UUPS proxies
+pnpm upgrade:testnet    # upgrade the proxies in .env to the compiled code (upgrade admin only)
 
 # Dashboard
 cd apps/dashboard
@@ -77,28 +78,33 @@ The SDK exposes four entry points (see `exports` in `sdk/package.json`), split a
 
 ### SDK Modules (`sdk/src/`)
 
-- **`chain/`** — Ethers.js wrappers for RobotRegistry and RobotCommandDispatcher contracts. `ChainListener` watches for events via subscription with polling fallback. Isomorphic.
+- **`chain/`** — Ethers.js wrappers for RobotRegistry and RobotCommandDispatcher contracts. `ChainListener` polls the robot's command nonce and reads new commands by nonce. Log subscriptions delivered nothing on the Galileo public RPC. Isomorphic.
+- **`recording/`** — playback of `examples/record-commands.ts` output: `buildTimeline` merges a command's staggered runs into one joint timeline, since joint state arrives at ~1 Hz over WebRTC, and `samplePose` reads a pose from it. Isomorphic.
 - **`command/`** — command-abstraction layer: `Commander` (sends commands to chain) plus the per-robot-type command vocabulary in `command/schemas/` (`GO2_SPORT_SCHEMAS`, `SCHEMAS_BY_ROBOT_TYPE`, `getSchemasForRobotType`). Adding a new robot type = drop a `*_SCHEMAS` constant in `command/schemas/` and add one line to the registry. Isomorphic. Backs the root entry.
 - **`robot/`** — WebRTC connection to Go2 Pro. Key flow: SDP signaling (with AES-ECB/RSA crypto) → data channel → MD5 validation handshake → 2s heartbeat. Commands are JSON over the data channel with double-serialized `parameter` field. Robot-protocol constants (`DataChannelType`, `RtcTopic`, AES keys) live in `robot/constants.ts`.
-- **`operator/`** — `OperatorNode` orchestrates chain→robot (the only module that imports from both the chain and robot planes).
+- **`operator/`** — `OperatorNode` orchestrates chain→robot (the only module that imports from both the chain and robot planes). Runs commands one at a time in nonce order, sends a schema's `exitApiId` after it (`RiseSit` after `Sit`), and rejects commands outside `allowedApiIds`. On start it recovers commands still pending from before a restart. Receipts are broadcast without waiting for the previous one to confirm, because the Galileo public RPC takes ~10s to return a receipt.
+- **Menus** — `resolveMenu` joins a robot's public moves (`examples/menus/*.json`) with the command schemas, adding labels and emoji. The same JSON shape is meant to move into 0G Storage under the robot's `storageRoot`.
 - **`ai/`** — Resolves natural language prompts to command sequences via 0G Compute (OpenAI-compatible API). System prompt is built dynamically from `GO2_SPORT_SCHEMAS` (currently Go2-only; will be parameterized by schemas when other robot types gain AI support). `AIBroker` is bundle-safe (dynamic import) but needs a Node runtime plus the optional `@0glabs/0g-serving-broker` peer dep at call time. Takes the same wallet-resolution union as `ChainConfig` (signer / walletClient / privateKey + rpcUrl).
 - **`mock/`** — in-process mock Go2 server emulating the signaling, validation, and command-ack flow.
 
 ### Dashboard (`apps/dashboard/src/`)
 
-- **Stack:** Svelte 5 (runes: `$state`, `$derived`, `$effect`), SvelteKit 2, Tailwind CSS 4 (`@tailwindcss/vite`), Wagmi Core v3 + viem
-- **`lib/stores/`** — Class-based reactive state: `wallet.svelte.ts` (wagmi wallet), `robot.svelte.ts` (WebRTC connection), `network.svelte.ts` (chain selection)
+- **Stack:** Next.js 16 (App Router, Turbopack), React 19, wagmi 3 + viem, Tailwind CSS 4, and the shared 0G site shell `@0gfoundation/0g-ui`, pinned to a release tag. Its `prepare` script needs the `allowBuilds` entry in `pnpm-workspace.yaml`. Its `pnpm-lock.yaml` entry must have a git resolution (`{commit, path: packages/0g-ui, repo, type: git}`). Since 0g-ui went public, pnpm resolves a repin to a codeload tarball without the `path`, and a fresh `--frozen-lockfile` install (Vercel) then unpacks the whole 0g-ui repo and the shell's imports fail. Check the lockfile after every repin.
+- **Hosted vs local mode** — `ZEROBOT_MODE` (`hosted` on Vercel, `local` otherwise; see `next.config.ts`, read as `LOCAL_MODE` from `lib/mode.ts`). Hosted only talks to the chain. Local adds what needs the robot's network: direct control through `/api/negotiate` (the browser can't reach the robot's signaling cross-origin), the mock robot, and live recordings. Local-only API routes return 404 when hosted.
+- **Routes:** `(site)/page.tsx` is the owner page (register, activate, open to the public, set price, direct control in local mode). `(site)/robots/[name]` is the audience page the QR code opens. `(stage)/robots/[name]/stage` is the full-screen venue screen. `(site)/recordings` plays back `examples/record-commands.ts` output and follows new runs live, in local mode.
+- **`lib/use-queue.ts`** polls a robot's nonce and commands; the nonce is the queue order. **`lib/schedule.ts`** predicts when the operator runs each command, mirroring `OperatorNode`'s timing, so the stage animates in step with the robot instead of waiting for receipts, which land 4-5s after each move.
+- **`lib/robots.ts`** — robot menus by name, imported from `examples/menus/`. `scripts/copy-recordings.mjs` copies `examples/recordings` (or `RECORDINGS_DIR`) into `public/recordings` before `dev` and `build`, for stage playback. Recording playback itself is the SDK's `buildTimeline` / `samplePose`.
 - **`lib/networks.ts`** — Network definitions with per-network contract addresses. Adding a network = adding an entry here.
-- **`routes/api/negotiate/`** — SvelteKit server endpoint proxying SDP exchange to robot (browser can't reach robot directly due to CORS)
-- **Mock robot (dry run)** — `hooks.server.ts` starts one per dev server on `MOCK_ROBOT_PORT` (default 9991), and `/api/negotiate` sends loopback addresses there. To run a second dev server alongside the first, e.g. to preview a branch from its worktree: `MOCK_ROBOT_PORT=9992 RECORDINGS_DIR=<main checkout>/examples/recordings pnpm exec vite dev --port 5174`.
-- **`routes/recordings/`** — Plays back `examples/record-commands.ts` output and follows new runs live. Files come from `routes/api/recordings/`, which reads `examples/recordings` (override with `RECORDINGS_DIR`). `lib/playback.ts` merges a command's staggered runs into one joint timeline, since joint state arrives at ~1 Hz over WebRTC.
-- **`lib/chain.ts`** — `getChainClient()` factory: builds a fresh `ChainClient` from the current wagmi `walletClient` + active network on each call. The dashboard performs all on-chain operations through the SDK; there are no duplicate ABIs or contract wrappers in the dashboard.
+- **`lib/chain.ts`** — `readClient()` for reads without a wallet, `walletClient(wallet)` for writes with the connected wallet. The dashboard performs all on-chain operations through the SDK; there are no duplicate ABIs or contract wrappers in the dashboard.
+- **Mock robot (dry run)** — `instrumentation.ts` starts one per server in local mode on `MOCK_ROBOT_PORT` (default 9991). To run a second dev server alongside the first: `MOCK_ROBOT_PORT=9992 RECORDINGS_DIR=<main checkout>/examples/recordings pnpm dev --port 3100`.
 - **Click-outside handlers:** Use `pointerdown` (not `click` or `mousedown`) — it fires on both desktop and touch devices, where the others have inconsistent behavior across modalities.
 
 ### Smart Contracts
 
-- **RobotRegistry** — Robot identity, owner/controller permissions, command pricing. `msg.sender` becomes owner on registration (permissionless, no admin).
-- **RobotCommandDispatcher** — Command queue with monotonic nonces, 5-minute expiry, payment enforcement, execution receipts. References Registry for authorization.
+- **RobotRegistry** — Robot identity, owner/controller/operator permissions (table in `README.md`), command pricing. `msg.sender` becomes owner on registration (permissionless). `multicall` batches an owner's calls, e.g. register plus settings, into one transaction. `setPublicCommands` lets anyone dispatch to a robot, still paying its command price.
+- **RobotCommandDispatcher** — Command queue with monotonic nonces, 5-minute expiry, payment enforcement, execution receipts. References Registry for authorization. Each command carries a free-text `note` (max 64 bytes), e.g. the sender's name. The nonce is the queue order.
+
+- **Upgrades** — Both contracts are UUPS proxies (OpenZeppelin upgradeable, `Ownable2Step`). The addresses below are the proxies and never change. Upgrade with `pnpm upgrade:testnet` from the upgrade admin (`DEPLOYER_PRIVATE_KEY`). Rules for upgradeable code: keep `initialize` in place of a constructor, only append new state variables after the existing ones, and commit `contracts/.openzeppelin/`, the plugin's record of each deployment's storage layout, which it checks every upgrade against. To move to a multisig and timelock: deploy a `TimelockController` with the Safe as proposer, then `transferOwnership(timelock)` on both proxies, and accept it through the timelock.
 
 ## Robot Compatibility
 
@@ -138,6 +144,6 @@ G1 uses `LocoClient` (not `SportClient`) with different API IDs and topics (`rt/
 
 ## Deployed Contracts (Galileo Testnet)
 
-- Registry: `0x2312cE812E35a9cBb65Fa692e566Df4C61D9Ba74`
-- Dispatcher: `0xddc4C76Ea5bE99EC754a8de3FC470364aa29c0b8`
+- Registry: `0x291162e93D7A80Eb8F738882a28a7a8A5FBA73bb`
+- Dispatcher: `0x418bA7C231dac8Ef58b534BeE6adC50E703AA753`
 - Chain ID: 16602, RPC: `https://evmrpc-testnet.0g.ai`

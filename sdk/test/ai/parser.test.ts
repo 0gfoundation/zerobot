@@ -48,7 +48,7 @@ describe("parseLLMResponse", () => {
   it("should use schema duration when not specified", () => {
     const response = '[{"command": "Hello"}]';
     const result = parseLLMResponse(response);
-    expect(result[0].duration_ms).toBe(3000); // Hello's estimated duration
+    expect(result[0].duration_ms).toBe(4700); // Hello's estimated duration
   });
 
   it("should reject unknown commands", () => {

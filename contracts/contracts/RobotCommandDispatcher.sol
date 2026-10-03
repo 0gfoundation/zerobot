@@ -1,37 +1,65 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import "./interfaces/IRobotCommandDispatcher.sol";
 import "./interfaces/IRobotRegistry.sol";
 
-contract RobotCommandDispatcher is IRobotCommandDispatcher {
-    IRobotRegistry public immutable registry;
+/// Deployed behind a UUPS proxy. This contract's own `owner()` is the
+/// upgrade admin, unrelated to each robot's owner. It can be handed to a
+/// timelock run by a multisig later with `transferOwnership`, which the new
+/// owner accepts with `acceptOwnership` (Ownable2Step).
+///
+/// No multicall here: calls carry payments, and a delegatecall loop would
+/// let one payment count for several commands.
+contract RobotCommandDispatcher is
+    IRobotCommandDispatcher,
+    Initializable,
+    UUPSUpgradeable,
+    Ownable2StepUpgradeable
+{
+    IRobotRegistry public registry;
 
     mapping(bytes32 => uint256) private _robotNonce;
     mapping(bytes32 => mapping(uint256 => Command)) private _commands;
     mapping(bytes32 => uint256) private _pendingBalance;
 
     uint256 public constant COMMAND_EXPIRY = 5 minutes;
+    uint256 public constant MAX_NOTE_LENGTH = 64;
 
-    constructor(address registryAddress) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(address registryAddress, address upgradeAdmin) external initializer {
+        __Ownable_init(upgradeAdmin);
+        __Ownable2Step_init();
         registry = IRobotRegistry(registryAddress);
     }
+
+    function _authorizeUpgrade(address) internal override onlyOwner {}
 
     function dispatchCommand(
         bytes32 robotId,
         uint32 apiId,
-        string calldata parameters
+        string calldata parameters,
+        string calldata note
     ) external payable {
-        _dispatch(robotId, apiId, parameters);
+        _dispatch(robotId, apiId, parameters, note);
     }
 
     function dispatchBatch(
         bytes32 robotId,
         uint32[] calldata apiIds,
-        string[] calldata parameters
+        string[] calldata parameters,
+        string calldata note
     ) external payable {
         require(apiIds.length == parameters.length, "Array length mismatch");
         require(apiIds.length > 0, "Empty batch");
+        require(bytes(note).length <= MAX_NOTE_LENGTH, "Note too long");
 
         uint256 price = registry.getCommandPrice(robotId);
         if (price > 0) {
@@ -42,7 +70,7 @@ contract RobotCommandDispatcher is IRobotCommandDispatcher {
         require(registry.isAuthorized(robotId, msg.sender), "Not authorized");
 
         for (uint256 i = 0; i < apiIds.length; i++) {
-            _dispatchInternal(robotId, apiIds[i], parameters[i]);
+            _dispatchInternal(robotId, apiIds[i], parameters[i], note);
         }
 
         if (price > 0) {
@@ -57,7 +85,10 @@ contract RobotCommandDispatcher is IRobotCommandDispatcher {
         string calldata resultData
     ) external {
         IRobotRegistry.Robot memory robot = registry.getRobot(robotId);
-        require(robot.owner == msg.sender, "Only robot owner can submit receipts");
+        require(
+            robot.owner == msg.sender || registry.isOperator(robotId, msg.sender),
+            "Only robot owner or operator can submit receipts"
+        );
 
         Command storage cmd = _commands[robotId][nonce];
         require(cmd.timestamp > 0, "Command does not exist");
@@ -125,9 +156,11 @@ contract RobotCommandDispatcher is IRobotCommandDispatcher {
     function _dispatch(
         bytes32 robotId,
         uint32 apiId,
-        string calldata parameters
+        string calldata parameters,
+        string calldata note
     ) internal {
         require(registry.isAuthorized(robotId, msg.sender), "Not authorized");
+        require(bytes(note).length <= MAX_NOTE_LENGTH, "Note too long");
 
         uint256 price = registry.getCommandPrice(robotId);
         if (price > 0) {
@@ -135,13 +168,14 @@ contract RobotCommandDispatcher is IRobotCommandDispatcher {
             _pendingBalance[robotId] += msg.value;
         }
 
-        _dispatchInternal(robotId, apiId, parameters);
+        _dispatchInternal(robotId, apiId, parameters, note);
     }
 
     function _dispatchInternal(
         bytes32 robotId,
         uint32 apiId,
-        string calldata parameters
+        string calldata parameters,
+        string calldata note
     ) internal {
         uint256 nonce = _robotNonce[robotId]++;
 
@@ -150,12 +184,13 @@ contract RobotCommandDispatcher is IRobotCommandDispatcher {
             sender: msg.sender,
             apiId: apiId,
             parameters: parameters,
+            note: note,
             value: msg.value,
             timestamp: block.timestamp,
             nonce: nonce,
             status: CommandStatus.Pending
         });
 
-        emit CommandDispatched(robotId, nonce, msg.sender, apiId, parameters, msg.value);
+        emit CommandDispatched(robotId, nonce, msg.sender, apiId, parameters, note, msg.value);
     }
 }

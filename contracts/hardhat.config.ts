@@ -1,5 +1,6 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
+import "@openzeppelin/hardhat-upgrades";
 import "dotenv/config";
 import path from "node:path";
 import { config as dotenvConfig } from "dotenv";

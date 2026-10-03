@@ -19,7 +19,23 @@
                                                         submitReceipt() ◄┘
 ```
 
-Two contracts (`RobotRegistry`, `RobotCommandDispatcher`) handle robot identity, owner/controller permissions, the command queue, and payments. The SDK provides everything off-chain.
+Two contracts (`RobotRegistry`, `RobotCommandDispatcher`) handle robot identity, permissions, the command queue, and payments. The SDK provides everything off-chain.
+
+### Roles
+
+Each robot has its own roles. The wallet that registers it is the owner, and the owner adds controllers and operators. Both contracts sit behind upgradeable proxies. Their upgrade admin, the deployer for now and later a timelock run by a multisig, can change the contract code but has no role on any robot. Owner settings can be batched into one transaction with the registry's `multicall`.
+
+| | Owner | Controller | Operator | Anyone |
+|---|:-:|:-:|:-:|:-:|
+| Send commands, paying the robot's price | ✓ | ✓ | if public | if public |
+| Submit receipts | ✓ | | ✓ | |
+| Set price, public access, active | ✓ | | | |
+| Add or remove controllers and operators | ✓ | | | |
+| Withdraw payments | ✓ | | | |
+
+- **Owner** — usually a browser wallet. Registers the robot and manages it from the dashboard.
+- **Controller** — someone allowed to drive a robot that isn't open to the public, such as a teammate or an AI agent.
+- **Operator** — the key `OperatorNode` runs on, next to the robot. It reports what happened to each command, so the owner's wallet never has to live on that machine. Remove one and it stops at once. Run one operator at a time per robot.
 
 ## Try the dashboard
 
@@ -29,7 +45,7 @@ pnpm --filter @0g-foundation/zerobot-sdk build
 pnpm --filter @0g-foundation/zerobot-dashboard dev
 ```
 
-Open `http://localhost:5173`, connect a wallet on the **0G Galileo Testnet**, and register a robot. You can run against a real Go2 Pro on your local network or use the built-in mock (dry-run mode).
+Open `http://localhost:3000`, connect a wallet on the **0G Galileo Testnet**, and register a robot. You can run against a real Go2 Pro on your local network or use the built-in mock (dry-run mode).
 
 ## Build with the SDK
 
@@ -39,8 +55,8 @@ import { Commander, SportCommand } from '@0g-foundation/zerobot-sdk';
 // Accepts a viem WalletClient, an ethers Signer, or a privateKey + rpcUrl.
 const commander = new Commander({
   rpcUrl: 'https://evmrpc-testnet.0g.ai',
-  registryAddress: '0x2312cE812E35a9cBb65Fa692e566Df4C61D9Ba74',
-  dispatcherAddress: '0xddc4C76Ea5bE99EC754a8de3FC470364aa29c0b8',
+  registryAddress: '0x291162e93D7A80Eb8F738882a28a7a8A5FBA73bb',
+  dispatcherAddress: '0x418bA7C231dac8Ef58b534BeE6adC50E703AA753',
   walletClient,  // from wagmi / viem
 });
 
@@ -64,11 +80,12 @@ Runnable end-to-end scripts in [`examples/`](./examples), including the operator
 For browsing without an IDE. Method semantics — parameter units, throw conditions, wait-or-not contracts — live in JSDoc, surfaced via IntelliSense after `import`.
 
 **`@0g-foundation/zerobot-sdk`** (root)
-- **`ChainClient`** — `registerRobot` · `updateRobot` · `addController` · `removeController` · `setCommandPrice` · `dispatchCommand` · `dispatchBatch` · `submitReceipt` · `withdrawBalance` · `getRobotNonce` · `getCommand` · `isAuthorized` · `getRobot` · `getCommandPrice` · `listRobotsByOwner`
+- **`ChainClient`** — `registerRobot` · `updateRobot` · `addController` · `removeController` · `addOperator` · `removeOperator` · `isOperator` · `listOperators` · `setCommandPrice` · `setPublicCommands` · `dispatchCommand` · `dispatchBatch` · `submitReceipt` · `withdrawBalance` · `getRobotNonce` · `getCommand` · `getPendingCommands` · `isAuthorized` · `getRobot` · `getCommandPrice` · `listRobotsByOwner`
 - **`Commander`** — `sendCommand` · `sendBatch`
 - **`ChainListener`** — `start` · `stop`; events: `command`, `error`
 - **`AIBroker`** — `initialize` · `resolvePrompt`
 - Per-robot-type command vocabulary: `GO2_SPORT_SCHEMAS`, `SCHEMAS_BY_ROBOT_TYPE`, `getSchemasForRobotType(robotType)`
+- Per-robot menus of public moves: `resolveMenu(menu, robotType)`
 - Other helpers: `walletClientToSigner`, `buildSystemPrompt`, `parseLLMResponse`
 
 Listing the commands available for a particular robot is a one-liner composing two primitives — no dedicated method needed on `Commander`:
@@ -85,7 +102,7 @@ const schemas = getSchemasForRobotType(robot.robotType); // [] for unknown types
 - Enums: `DataChannelType`, `RtcTopic`. Message builders: `buildSportCommandMessage` and siblings (vui / motionSwitcher / subscribe / unsubscribe / videoToggle / audioToggle). Crypto helpers: `generateAesKey`, `aesEcbEncrypt`/`Decrypt`, `aesGcmDecrypt`, `rsaEncrypt`, `computeValidationResponse`.
 
 **`@0g-foundation/zerobot-sdk/operator`**
-- **`OperatorNode`** — `start` · `stop`; events: `started`, `stopped`, `commandReceived`, `commandExecuted`, `error`
+- **`OperatorNode`** — `start` · `stop`; events: `started`, `stopped`, `commandReceived`, `commandStarted`, `commandExecuted`, `error`
 
 **`@0g-foundation/zerobot-sdk/mock`**
 - `startMockRobot(port?: number)`
@@ -95,7 +112,7 @@ const schemas = getSchemasForRobotType(robot.robotType); // [] for unknown types
 ```
 sdk/              TypeScript SDK (@0g-foundation/zerobot-sdk)
 contracts/        Solidity smart contracts (Hardhat)
-apps/dashboard/   SvelteKit web UI
+apps/dashboard/   Next.js web app
 examples/         CLI examples (npx tsx)
 ```
 
