@@ -1,0 +1,12 @@
+# Never upload keys or local build output with a CLI deploy
+.env
+.env.*
+**/.env
+node_modules
+**/node_modules
+**/.next
+**/dist
+contracts/artifacts
+contracts/cache
+contracts/typechain-types
+.claude
