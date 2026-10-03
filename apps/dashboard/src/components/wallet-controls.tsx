@@ -1,30 +1,18 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useConnect, useConnection, useConnectors, useDisconnect } from 'wagmi';
+import { useConnection, useDisconnect } from 'wagmi';
 import { Button } from '@0gfoundation/0g-ui/shell';
 import { defaultNetwork } from '@/lib/networks';
-import { errorMessage } from '@/lib/chain';
+import { useWalletModal } from './wallet/wallet-modal';
 import { WalletAddress } from './wallet-address';
-
-/**
- * Link that reopens this page inside the MetaMask app's browser, for a
- * phone with no wallet in its own browser.
- */
-export function metamaskDeepLink(): string {
-	const { host, pathname, search } = window.location;
-	return `https://metamask.app.link/dapp/${host}${pathname}${search}`;
-}
 
 /** Connect button, or the connected address with a disconnect menu */
 export function WalletControls() {
 	const { address, status } = useConnection();
-	const connectors = useConnectors();
-	const connect = useConnect();
 	const disconnect = useDisconnect();
+	const walletModal = useWalletModal();
 	const [open, setOpen] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-	const [clicked, setClicked] = useState(false);
 	const menu = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -36,35 +24,13 @@ export function WalletControls() {
 		return () => window.removeEventListener('pointerdown', onDown);
 	}, [open]);
 
-	async function connectWallet() {
-		setError(null);
-		const injected = connectors.find((c) => c.type === 'injected');
-		if (!injected || !(await injected.getProvider().catch(() => null))) {
-			window.location.href = metamaskDeepLink();
-			return;
-		}
-		setClicked(true);
-		try {
-			await connect.mutateAsync({ connector: injected, chainId: defaultNetwork.chain.id });
-		} catch (err) {
-			setError(errorMessage(err));
-		} finally {
-			setClicked(false);
-		}
-	}
-
 	if (status === 'reconnecting') return null;
 
 	if (!address) {
 		return (
-			<div className="relative">
-				<Button size="small" onClick={connectWallet}>
-					{clicked ? 'Connecting…' : 'Connect wallet'}
-				</Button>
-				{error && (
-					<p className="absolute right-0 mt-2 w-64 rounded-xl bg-bg p-3 text-sm text-danger shadow-lg">{error}</p>
-				)}
-			</div>
+			<Button size="small" onClick={walletModal.open}>
+				Connect wallet
+			</Button>
 		);
 	}
 
