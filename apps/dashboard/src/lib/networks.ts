@@ -57,5 +57,5 @@ export const networks: Record<number, NetworkConfig> = {
 	// }
 };
 
-export const supportedChains = Object.values(networks).map((n) => n.chain);
+export const supportedChains = Object.values(networks).map((n) => n.chain) as [Chain, ...Chain[]];
 export const defaultNetwork = networks[zeroGTestnet.id];

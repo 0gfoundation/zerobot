@@ -96,7 +96,7 @@ const schemas = getSchemasForRobotType(robot.robotType); // [] for unknown types
 ```
 sdk/              TypeScript SDK (@0g-foundation/zerobot-sdk)
 contracts/        Solidity smart contracts (Hardhat)
-apps/dashboard/   SvelteKit web UI
+apps/dashboard/   Next.js web app
 examples/         CLI examples (npx tsx)
 ```
 

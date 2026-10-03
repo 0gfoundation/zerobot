@@ -1,22 +1,19 @@
-import { createConfig, http, type Config } from '@wagmi/core';
-import { injected } from '@wagmi/connectors';
-import { supportedChains } from '$lib/networks';
+import { createConfig, http, type Transport } from 'wagmi';
+import { injected } from 'wagmi/connectors';
+import { supportedChains } from './networks';
 
-let _config: Config | null = null;
+export const wagmiConfig = createConfig({
+	chains: supportedChains,
+	transports: Object.fromEntries(supportedChains.map((c) => [c.id, http()])) as Record<
+		number,
+		Transport
+	>,
+	connectors: [injected()],
+	ssr: true
+});
 
-export function getConfig(): Config {
-	if (!_config) {
-		const transports: Record<number, ReturnType<typeof http>> = {};
-		for (const chain of supportedChains) {
-			transports[chain.id] = http();
-		}
-
-		_config = createConfig({
-			chains: supportedChains as any,
-			transports,
-			connectors: [injected()],
-			ssr: true
-		});
+declare module 'wagmi' {
+	interface Register {
+		config: typeof wagmiConfig;
 	}
-	return _config;
 }

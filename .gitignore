@@ -9,3 +9,6 @@ coverage/
 .env
 *.tsbuildinfo
 .DS_Store
+.next/
+next-env.d.ts
+apps/dashboard/public/recordings/

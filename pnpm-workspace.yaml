@@ -7,3 +7,7 @@ allowBuilds:
   esbuild: true
   keccak: false
   secp256k1: false
+  # The shared 0G shell builds its dist (tsdown, Tailwind CLI) on install: its
+  # prepare script is the build. 0g-site keys this on the resolved commit, but
+  # this workspace's pnpm rejects that key as a version union.
+  '@0gfoundation/0g-ui': true
