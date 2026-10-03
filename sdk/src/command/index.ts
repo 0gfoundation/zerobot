@@ -4,3 +4,5 @@ export {
   SCHEMAS_BY_ROBOT_TYPE,
   getSchemasForRobotType,
 } from "./schemas/index.js";
+export { resolveMenu } from "./menu.js";
+export type { RobotMenu, RobotMenuItem, ResolvedMenuItem } from "./menu.js";

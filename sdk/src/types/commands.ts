@@ -76,7 +76,15 @@ export interface CommandSchema {
    */
   apiId: number;
   name: string;
+  /** Short name for end users, e.g. "Wave hello". Falls back to `name`. */
+  label?: string;
   description: string;
+  /**
+   * Command that returns the robot to standing once this one finishes, e.g.
+   * `RiseSit` after `Sit`. Operators send it straight after, so the next
+   * command always starts from the same pose.
+   */
+  exitApiId?: number;
   params?: {
     [key: string]: {
       type: string;

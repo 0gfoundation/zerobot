@@ -1,8 +1,14 @@
 import { ethers, type ContractTransactionReceipt } from "ethers";
-import type { ChainConfig, DispatchOptions, Robot } from "../types/chain.js";
+import type {
+  ChainConfig,
+  DispatchOptions,
+  OnChainCommand,
+  Robot,
+} from "../types/chain.js";
 import type { CommandPayload } from "../types/commands.js";
 import { REGISTRY_ABI, DISPATCHER_ABI } from "./abis.js";
 import { resolveSigner } from "./adapter.js";
+import { waitForReceipt } from "./wait.js";
 
 /**
  * Client for interacting with the 0G Robot smart contracts. Write methods
@@ -17,6 +23,9 @@ export class ChainClient {
 
   constructor(config: ChainConfig) {
     this.provider = new ethers.JsonRpcProvider(config.rpcUrl);
+    if (config.pollingIntervalMs) {
+      this.provider.pollingInterval = config.pollingIntervalMs;
+    }
 
     // Pass `this.provider` so the privateKey path reuses it instead of
     // constructing a second JsonRpcProvider against the same RPC.
@@ -57,7 +66,7 @@ export class ChainClient {
       robotType,
       storageRoot,
     );
-    return tx.wait();
+    return waitForReceipt(tx);
   }
 
   /**
@@ -73,7 +82,7 @@ export class ChainClient {
     active: boolean,
   ): Promise<ContractTransactionReceipt | null> {
     const tx = await this.registry.updateRobot(robotId, storageRoot, active);
-    return tx.wait();
+    return waitForReceipt(tx);
   }
 
   /**
@@ -88,7 +97,7 @@ export class ChainClient {
     controller: string,
   ): Promise<ContractTransactionReceipt | null> {
     const tx = await this.registry.addController(robotId, controller);
-    return tx.wait();
+    return waitForReceipt(tx);
   }
 
   /**
@@ -99,7 +108,7 @@ export class ChainClient {
     controller: string,
   ): Promise<ContractTransactionReceipt | null> {
     const tx = await this.registry.removeController(robotId, controller);
-    return tx.wait();
+    return waitForReceipt(tx);
   }
 
   /**
@@ -114,7 +123,7 @@ export class ChainClient {
     price: bigint,
   ): Promise<ContractTransactionReceipt | null> {
     const tx = await this.registry.setCommandPrice(robotId, price);
-    return tx.wait();
+    return waitForReceipt(tx);
   }
 
   /**
@@ -127,7 +136,7 @@ export class ChainClient {
     enabled: boolean,
   ): Promise<ContractTransactionReceipt | null> {
     const tx = await this.registry.setPublicCommands(robotId, enabled);
-    return tx.wait();
+    return waitForReceipt(tx);
   }
 
   /**
@@ -153,7 +162,7 @@ export class ChainClient {
       note,
       { value },
     );
-    return tx.wait();
+    return waitForReceipt(tx);
   }
 
   /**
@@ -177,7 +186,7 @@ export class ChainClient {
       note,
       { value },
     );
-    return tx.wait();
+    return waitForReceipt(tx);
   }
 
   /**
@@ -201,7 +210,7 @@ export class ChainClient {
       success,
       resultData,
     );
-    return tx.wait();
+    return waitForReceipt(tx);
   }
 
   /**
@@ -212,7 +221,7 @@ export class ChainClient {
     robotId: string,
   ): Promise<ContractTransactionReceipt | null> {
     const tx = await this.dispatcher.withdrawBalance(robotId);
-    return tx.wait();
+    return waitForReceipt(tx);
   }
 
   /**
@@ -234,6 +243,24 @@ export class ChainClient {
     nonce: bigint,
   ): Promise<Record<string, unknown>> {
     return this.dispatcher.getCommand(robotId, nonce);
+  }
+
+  /**
+   * Read the commands still pending (no receipt yet) among nonces
+   * `fromNonce` to `fromNonce + count - 1`, in nonce order. Includes
+   * commands past their expiry that nobody has rejected yet.
+   */
+  async getPendingCommands(
+    robotId: string,
+    fromNonce: bigint,
+    count: number,
+  ): Promise<OnChainCommand[]> {
+    const cmds = await this.dispatcher.getPendingCommands(
+      robotId,
+      fromNonce,
+      count,
+    );
+    return cmds.map(toOnChainCommand);
   }
 
   /**
@@ -301,4 +328,18 @@ export class ChainClient {
       })),
     );
   }
+}
+
+/** Normalize a `Command` struct as ethers returns it. */
+export function toOnChainCommand(cmd: Record<string, unknown>): OnChainCommand {
+  return {
+    robotId: cmd.robotId as string,
+    nonce: cmd.nonce as bigint,
+    sender: cmd.sender as string,
+    apiId: Number(cmd.apiId),
+    parameters: cmd.parameters as string,
+    note: cmd.note as string,
+    value: cmd.value as bigint,
+    timestamp: cmd.timestamp as bigint,
+  };
 }

@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "command": "Hello",
+      "label": "Wave hello",
+      "emoji": "👋",
+      "description": "Larry lifts a paw and waves at the crowd."
+    },
+    {
+      "command": "Sit",
+      "label": "Sit",
+      "emoji": "🐕",
+      "description": "Larry sits down like a good dog, then stands back up."
+    },
+    {
+      "command": "Stretch",
+      "label": "Big stretch",
+      "emoji": "🧘",
+      "description": "Larry reaches his front paws forward for a long stretch."
+    }
+  ]
+}

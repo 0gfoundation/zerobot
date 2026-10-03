@@ -1,5 +1,5 @@
 import { EventEmitter } from "eventemitter3";
-import type { ChainClient } from "./client.js";
+import { toOnChainCommand, type ChainClient } from "./client.js";
 import type { OnChainCommand } from "../types/chain.js";
 
 export interface ChainListenerEvents {
@@ -8,15 +8,16 @@ export interface ChainListenerEvents {
 }
 
 /**
- * Listens for CommandDispatched events on-chain and emits them for processing.
+ * Watches a robot's command nonce on-chain and emits each new command once,
+ * in nonce order.
  *
- * Supports two modes:
- * - Event subscription (real-time, requires WebSocket RPC)
- * - Polling (reliable fallback, works with any RPC)
+ * Polls contract state rather than subscribing to `CommandDispatched` logs.
+ * On the Galileo public RPC, ethers' log subscription delivered nothing, and
+ * reading by nonce never skips a command.
  */
 export class ChainListener extends EventEmitter<ChainListenerEvents> {
-  private pollInterval: ReturnType<typeof setInterval> | null = null;
-  private lastProcessedNonce: bigint = 0n;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private nextNonce = 0n;
   private listening = false;
 
   constructor(
@@ -27,30 +28,31 @@ export class ChainListener extends EventEmitter<ChainListenerEvents> {
   }
 
   /**
-   * Start watching for new commands. Tries WebSocket-style event subscription
-   * first; on failure (RPC doesn't support `eth_subscribe`), silently falls
-   * back to polling at `pollIntervalMs`. Idempotent — calling twice is a no-op.
+   * Start watching for new commands. Idempotent — calling twice is a no-op.
    *
    * Only commands with a nonce ≥ the current on-chain nonce at start time
    * are surfaced; historical commands are skipped. To replay history, read
-   * them directly via `ChainClient.getCommand`.
+   * them via `ChainClient.getPendingCommands` or `getCommand`.
    *
-   * @param pollIntervalMs Polling cadence in milliseconds, only used when
-   *   subscription is unavailable. Defaults to 3000.
+   * @param pollIntervalMs Polling cadence in milliseconds. Defaults to the
+   *   client's `pollingIntervalMs`, or ethers' 4000.
    */
-  async start(pollIntervalMs = 3000): Promise<void> {
+  async start(
+    pollIntervalMs = this.client.provider.pollingInterval,
+  ): Promise<void> {
     if (this.listening) return;
     this.listening = true;
+    this.nextNonce = await this.client.getRobotNonce(this.robotId);
 
-    // Get current nonce to start from
-    this.lastProcessedNonce = await this.client.getRobotNonce(this.robotId);
-
-    try {
-      await this.startEventSubscription();
-    } catch {
-      // Fallback to polling
-      this.startPolling(pollIntervalMs);
-    }
+    const tick = async () => {
+      try {
+        await this.poll();
+      } catch (err) {
+        this.emit("error", err instanceof Error ? err : new Error(String(err)));
+      }
+      if (this.listening) this.timer = setTimeout(tick, pollIntervalMs);
+    };
+    this.timer = setTimeout(tick, pollIntervalMs);
   }
 
   /**
@@ -58,83 +60,24 @@ export class ChainListener extends EventEmitter<ChainListenerEvents> {
    */
   stop(): void {
     this.listening = false;
-    if (this.pollInterval) {
-      clearInterval(this.pollInterval);
-      this.pollInterval = null;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
     }
-    this.client.dispatcher.removeAllListeners("CommandDispatched");
   }
 
-  private async startEventSubscription(): Promise<void> {
-    const filter = this.client.dispatcher.filters.CommandDispatched(
-      this.robotId,
-    );
-
-    this.client.dispatcher.on(
-      filter,
-      (
-        robotId: string,
-        nonce: bigint,
-        sender: string,
-        apiId: number,
-        parameters: string,
-        note: string,
-        value: bigint,
-      ) => {
-        const command: OnChainCommand = {
-          robotId,
-          nonce,
-          sender,
-          apiId,
-          parameters,
-          note,
-          value,
-          timestamp: BigInt(Math.floor(Date.now() / 1000)),
-        };
-        this.lastProcessedNonce = nonce + 1n;
-        this.emit("command", command);
-      },
-    );
-  }
-
-  private startPolling(intervalMs: number): void {
-    this.pollInterval = setInterval(async () => {
-      try {
-        await this.pollPendingCommands();
-      } catch (err) {
-        this.emit(
-          "error",
-          err instanceof Error ? err : new Error(String(err)),
-        );
-      }
-    }, intervalMs);
-  }
-
-  private async pollPendingCommands(): Promise<void> {
+  private async poll(): Promise<void> {
     const currentNonce = await this.client.getRobotNonce(this.robotId);
-    if (currentNonce <= this.lastProcessedNonce) return;
 
-    const count = Number(currentNonce - this.lastProcessedNonce);
-    const batchSize = Math.min(count, 50);
-
-    for (let i = 0; i < batchSize; i++) {
-      const nonce = this.lastProcessedNonce + BigInt(i);
-      const cmd = await this.client.getCommand(this.robotId, nonce);
-
-      const command: OnChainCommand = {
-        robotId: cmd.robotId as string,
-        nonce: cmd.nonce as bigint,
-        sender: cmd.sender as string,
-        apiId: Number(cmd.apiId),
-        parameters: cmd.parameters as string,
-        note: cmd.note as string,
-        value: cmd.value as bigint,
-        timestamp: cmd.timestamp as bigint,
-      };
-
-      this.emit("command", command);
+    while (this.listening && this.nextNonce < currentNonce) {
+      const cmd = toOnChainCommand(
+        await this.client.getCommand(this.robotId, this.nextNonce),
+      );
+      // A load-balanced RPC can answer from a node that hasn't seen this
+      // command yet, which reads back as an empty struct. Retry next poll.
+      if (cmd.timestamp === 0n) return;
+      this.nextNonce++;
+      this.emit("command", cmd);
     }
-
-    this.lastProcessedNonce += BigInt(batchSize);
   }
 }

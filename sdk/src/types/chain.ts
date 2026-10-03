@@ -16,6 +16,12 @@ export interface ChainConfig {
    * `signer`, `walletClient`, or `privateKey`.
    */
   walletClient?: WalletClient;
+  /**
+   * How often to poll the RPC for new blocks and events, in ms. ethers
+   * defaults to 4000. Also the default poll cadence for `ChainListener`.
+   * Galileo makes a block about every 0.5s.
+   */
+  pollingIntervalMs?: number;
 }
 
 export interface OnChainCommand {

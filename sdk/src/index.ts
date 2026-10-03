@@ -17,6 +17,12 @@ export {
   GO2_SPORT_SCHEMAS,
   SCHEMAS_BY_ROBOT_TYPE,
   getSchemasForRobotType,
+  resolveMenu,
+} from "./command/index.js";
+export type {
+  RobotMenu,
+  RobotMenuItem,
+  ResolvedMenuItem,
 } from "./command/index.js";
 
 // AI integration (AIBroker requires a Node runtime + the optional

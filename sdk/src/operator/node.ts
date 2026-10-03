@@ -1,7 +1,9 @@
 import { EventEmitter } from "eventemitter3";
+import { NonceManager, type Contract } from "ethers";
 import { Go2Connection } from "../robot/connection.js";
 import { ChainClient } from "../chain/client.js";
 import { ChainListener } from "../chain/listener.js";
+import { waitForReceipt } from "../chain/wait.js";
 import { GO2_SPORT_SCHEMAS } from "../command/schemas/go2.js";
 
 // Operator currently dispatches Go2 sport commands; this lookup gives
@@ -16,8 +18,28 @@ export interface OperatorNodeEvents {
   started: () => void;
   stopped: () => void;
   commandReceived: (command: OnChainCommand) => void;
-  commandExecuted: (command: OnChainCommand, success: boolean) => void;
+  commandStarted: (command: OnChainCommand) => void;
+  commandExecuted: (
+    command: OnChainCommand,
+    success: boolean,
+    resultData: string,
+  ) => void;
   error: (error: Error) => void;
+}
+
+export interface OperatorNodeOptions {
+  /**
+   * Only these api ids run on the robot. Anything else gets a failed
+   * receipt. Omit to run every command.
+   */
+  allowedApiIds?: Iterable<number>;
+  /** Pause after each command before starting the next, in ms. Default 1000. */
+  settleMs?: number;
+  /**
+   * On start, pick up commands still pending among the last this many
+   * nonces, e.g. ones paid for while the operator was restarting. Default 50.
+   */
+  recoverCount?: number;
 }
 
 /**
@@ -36,6 +58,21 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
   private client: ChainClient;
   private listener: ChainListener;
   private running = false;
+  private allowed: Set<number> | null;
+  private settleMs: number;
+  private recoverCount: number;
+
+  private queue: OnChainCommand[] = [];
+  private seen = new Set<bigint>();
+  private draining = false;
+  // Receipts are broadcast one at a time, each without waiting for the
+  // previous to confirm. The public RPC takes ~10s to return a receipt, so
+  // waiting would leave the on-chain queue status far behind the robot.
+  // NonceManager counts nonces locally because that RPC's view of the
+  // pending nonce lags too.
+  private receiptDispatcher: Contract;
+  private receipts: Promise<void> = Promise.resolve();
+  private confirmations = new Set<Promise<void>>();
 
   /** Command expiry in seconds (matches contract COMMAND_EXPIRY) */
   private static readonly COMMAND_EXPIRY_S = 5 * 60;
@@ -44,11 +81,18 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     robotConfig: RobotConfig,
     chainConfig: ChainConfig,
     private robotId: string,
+    options: OperatorNodeOptions = {},
   ) {
     super();
     this.connection = new Go2Connection(robotConfig);
     this.client = new ChainClient(chainConfig);
     this.listener = new ChainListener(this.client, robotId);
+    this.receiptDispatcher = this.client.dispatcher.connect(
+      new NonceManager(this.client.signer),
+    ) as Contract;
+    this.allowed = options.allowedApiIds ? new Set(options.allowedApiIds) : null;
+    this.settleMs = options.settleMs ?? 1000;
+    this.recoverCount = options.recoverCount ?? 50;
   }
 
   /**
@@ -56,46 +100,99 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
    * once both are running; the bridge then processes commands indefinitely
    * until `stop()` is called. Idempotent — calling twice is a no-op.
    *
+   * Commands run one at a time in nonce order, each followed by its schema's
+   * exit command if it has one. The receipt goes out once the robot is done,
+   * so the oldest pending nonce on-chain is the one running or next up.
    * Commands older than 5 minutes (matches the contract's `COMMAND_EXPIRY`)
-   * are auto-rejected with `success=false, resultData="Command expired"`
-   * rather than executed. `Move` commands with a `duration_ms` parameter
-   * are issued repeatedly for the duration, then halted with `StopMove`.
+   * or not in `allowedApiIds` get `success=false` receipts and never run.
+   * `Move` commands with a `duration_ms` parameter are issued repeatedly for
+   * the duration, then halted with `StopMove`.
    */
   async start(): Promise<void> {
     if (this.running) return;
 
     // Connect to robot
     await this.connection.connect();
+    this.running = true;
 
-    // Start chain listener
-    this.listener.on("command", (cmd) => this.handleCommand(cmd));
+    // Listen first, then recover, so a command landing in between is seen
+    // by at least one of them. `seen` drops the duplicates.
+    this.listener.on("command", (cmd) => this.enqueue(cmd));
     this.listener.on("error", (err) => this.emit("error", err));
     await this.listener.start();
+    await this.recoverPending();
 
-    this.running = true;
     this.emit("started");
   }
 
   /**
-   * Stop the listener and disconnect the robot. Idempotent.
+   * Stop the listener and disconnect the robot. Commands still queued stay
+   * pending on-chain and are picked up by the next `start()`. Idempotent.
    */
   async stop(): Promise<void> {
     this.running = false;
     this.listener.stop();
+    this.queue = [];
+    this.seen.clear();
+    await this.receipts;
+    await Promise.all(this.confirmations);
     await this.connection.disconnect();
     this.emit("stopped");
   }
 
-  private async handleCommand(cmd: OnChainCommand): Promise<void> {
+  private async recoverPending(): Promise<void> {
+    const nonce = await this.client.getRobotNonce(this.robotId);
+    const from = nonce > BigInt(this.recoverCount)
+      ? nonce - BigInt(this.recoverCount)
+      : 0n;
+    const pending = await this.client.getPendingCommands(
+      this.robotId,
+      from,
+      this.recoverCount,
+    );
+    for (const cmd of pending) this.enqueue(cmd);
+  }
+
+  private enqueue(cmd: OnChainCommand): void {
+    if (!this.running || this.seen.has(cmd.nonce)) return;
+    this.seen.add(cmd.nonce);
     this.emit("commandReceived", cmd);
 
+    // Keep nonce order even if recovery and the listener interleave
+    const i = this.queue.findIndex((q) => q.nonce > cmd.nonce);
+    if (i === -1) this.queue.push(cmd);
+    else this.queue.splice(i, 0, cmd);
+
+    void this.drain();
+  }
+
+  private async drain(): Promise<void> {
+    if (this.draining) return;
+    this.draining = true;
+    try {
+      while (this.running && this.queue.length > 0) {
+        await this.handleCommand(this.queue.shift()!);
+      }
+    } finally {
+      this.draining = false;
+    }
+  }
+
+  private async handleCommand(cmd: OnChainCommand): Promise<void> {
     // Check if command has expired
     const now = Math.floor(Date.now() / 1000);
     const cmdTime = Number(cmd.timestamp);
     if (now - cmdTime > OperatorNode.COMMAND_EXPIRY_S) {
-      await this.submitReceipt(cmd, false, "Command expired");
+      this.finish(cmd, false, "Command expired");
       return;
     }
+
+    if (this.allowed && !this.allowed.has(cmd.apiId)) {
+      this.finish(cmd, false, "Command not allowed");
+      return;
+    }
+
+    this.emit("commandStarted", cmd);
 
     try {
       const params = cmd.parameters
@@ -121,15 +218,30 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
         if (schema && schema.estimatedDurationMs > 0) {
           await sleep(schema.estimatedDurationMs);
         }
+
+        // Return to standing, e.g. RiseSit after Sit
+        if (schema?.exitApiId !== undefined) {
+          await sleep(this.settleMs);
+          this.connection.sportCommand(schema.exitApiId as SportCommand);
+          const exit = SCHEMA_BY_API_ID.get(schema.exitApiId);
+          await sleep(exit?.estimatedDurationMs ?? 0);
+        }
       }
 
-      await this.submitReceipt(cmd, true, "");
-      this.emit("commandExecuted", cmd, true);
+      this.finish(cmd, true, "");
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      await this.submitReceipt(cmd, false, errMsg);
-      this.emit("commandExecuted", cmd, false);
+      this.finish(cmd, false, errMsg);
     }
+
+    await sleep(this.settleMs);
+  }
+
+  private finish(cmd: OnChainCommand, success: boolean, resultData: string): void {
+    this.emit("commandExecuted", cmd, success, resultData);
+    this.receipts = this.receipts.then(() =>
+      this.submitReceipt(cmd, success, resultData),
+    );
   }
 
   private async submitReceipt(
@@ -137,20 +249,27 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     success: boolean,
     resultData: string,
   ): Promise<void> {
-    try {
-      await this.client.submitReceipt(
-        this.robotId,
-        cmd.nonce,
-        success,
-        resultData,
-      );
-    } catch (err) {
+    const fail = (err: unknown): void => {
       this.emit(
         "error",
         new Error(
           `Failed to submit receipt for nonce ${cmd.nonce}: ${err instanceof Error ? err.message : err}`,
         ),
       );
+    };
+    try {
+      const tx = await this.receiptDispatcher.submitReceipt(
+        this.robotId,
+        cmd.nonce,
+        success,
+        resultData,
+      );
+      const confirmation: Promise<void> = waitForReceipt(tx)
+        .then(() => undefined, fail)
+        .finally(() => this.confirmations.delete(confirmation));
+      this.confirmations.add(confirmation);
+    } catch (err) {
+      fail(err);
     }
   }
 }

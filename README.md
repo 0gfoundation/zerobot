@@ -64,11 +64,12 @@ Runnable end-to-end scripts in [`examples/`](./examples), including the operator
 For browsing without an IDE. Method semantics — parameter units, throw conditions, wait-or-not contracts — live in JSDoc, surfaced via IntelliSense after `import`.
 
 **`@0g-foundation/zerobot-sdk`** (root)
-- **`ChainClient`** — `registerRobot` · `updateRobot` · `addController` · `removeController` · `setCommandPrice` · `dispatchCommand` · `dispatchBatch` · `submitReceipt` · `withdrawBalance` · `getRobotNonce` · `getCommand` · `isAuthorized` · `getRobot` · `getCommandPrice` · `listRobotsByOwner`
+- **`ChainClient`** — `registerRobot` · `updateRobot` · `addController` · `removeController` · `setCommandPrice` · `setPublicCommands` · `dispatchCommand` · `dispatchBatch` · `submitReceipt` · `withdrawBalance` · `getRobotNonce` · `getCommand` · `getPendingCommands` · `isAuthorized` · `getRobot` · `getCommandPrice` · `listRobotsByOwner`
 - **`Commander`** — `sendCommand` · `sendBatch`
 - **`ChainListener`** — `start` · `stop`; events: `command`, `error`
 - **`AIBroker`** — `initialize` · `resolvePrompt`
 - Per-robot-type command vocabulary: `GO2_SPORT_SCHEMAS`, `SCHEMAS_BY_ROBOT_TYPE`, `getSchemasForRobotType(robotType)`
+- Per-robot menus of public moves: `resolveMenu(menu, robotType)`
 - Other helpers: `walletClientToSigner`, `buildSystemPrompt`, `parseLLMResponse`
 
 Listing the commands available for a particular robot is a one-liner composing two primitives — no dedicated method needed on `Commander`:
@@ -85,7 +86,7 @@ const schemas = getSchemasForRobotType(robot.robotType); // [] for unknown types
 - Enums: `DataChannelType`, `RtcTopic`. Message builders: `buildSportCommandMessage` and siblings (vui / motionSwitcher / subscribe / unsubscribe / videoToggle / audioToggle). Crypto helpers: `generateAesKey`, `aesEcbEncrypt`/`Decrypt`, `aesGcmDecrypt`, `rsaEncrypt`, `computeValidationResponse`.
 
 **`@0g-foundation/zerobot-sdk/operator`**
-- **`OperatorNode`** — `start` · `stop`; events: `started`, `stopped`, `commandReceived`, `commandExecuted`, `error`
+- **`OperatorNode`** — `start` · `stop`; events: `started`, `stopped`, `commandReceived`, `commandStarted`, `commandExecuted`, `error`
 
 **`@0g-foundation/zerobot-sdk/mock`**
 - `startMockRobot(port?: number)`

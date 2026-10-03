@@ -77,10 +77,11 @@ The SDK exposes four entry points (see `exports` in `sdk/package.json`), split a
 
 ### SDK Modules (`sdk/src/`)
 
-- **`chain/`** — Ethers.js wrappers for RobotRegistry and RobotCommandDispatcher contracts. `ChainListener` watches for events via subscription with polling fallback. Isomorphic.
+- **`chain/`** — Ethers.js wrappers for RobotRegistry and RobotCommandDispatcher contracts. `ChainListener` polls the robot's command nonce and reads new commands by nonce. Log subscriptions delivered nothing on the Galileo public RPC. Isomorphic.
 - **`command/`** — command-abstraction layer: `Commander` (sends commands to chain) plus the per-robot-type command vocabulary in `command/schemas/` (`GO2_SPORT_SCHEMAS`, `SCHEMAS_BY_ROBOT_TYPE`, `getSchemasForRobotType`). Adding a new robot type = drop a `*_SCHEMAS` constant in `command/schemas/` and add one line to the registry. Isomorphic. Backs the root entry.
 - **`robot/`** — WebRTC connection to Go2 Pro. Key flow: SDP signaling (with AES-ECB/RSA crypto) → data channel → MD5 validation handshake → 2s heartbeat. Commands are JSON over the data channel with double-serialized `parameter` field. Robot-protocol constants (`DataChannelType`, `RtcTopic`, AES keys) live in `robot/constants.ts`.
-- **`operator/`** — `OperatorNode` orchestrates chain→robot (the only module that imports from both the chain and robot planes).
+- **`operator/`** — `OperatorNode` orchestrates chain→robot (the only module that imports from both the chain and robot planes). Runs commands one at a time in nonce order, sends a schema's `exitApiId` after it (`RiseSit` after `Sit`), and rejects commands outside `allowedApiIds`. On start it recovers commands still pending from before a restart. Receipts are broadcast without waiting for the previous one to confirm, because the Galileo public RPC takes ~10s to return a receipt.
+- **Menus** — `resolveMenu` joins a robot's public moves (`examples/menus/*.json`) with the command schemas, adding labels and emoji. The same JSON shape is meant to move into 0G Storage under the robot's `storageRoot`.
 - **`ai/`** — Resolves natural language prompts to command sequences via 0G Compute (OpenAI-compatible API). System prompt is built dynamically from `GO2_SPORT_SCHEMAS` (currently Go2-only; will be parameterized by schemas when other robot types gain AI support). `AIBroker` is bundle-safe (dynamic import) but needs a Node runtime plus the optional `@0glabs/0g-serving-broker` peer dep at call time. Takes the same wallet-resolution union as `ChainConfig` (signer / walletClient / privateKey + rpcUrl).
 - **`mock/`** — in-process mock Go2 server emulating the signaling, validation, and command-ack flow.
 
