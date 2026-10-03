@@ -152,11 +152,14 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 			</section>
 
 			<aside className="flex min-h-0 flex-col">
-				<div className="rounded-3xl bg-white p-4" dangerouslySetInnerHTML={{ __html: qr }} />
+				<figure className="rounded-3xl bg-white p-4">
+					<div dangerouslySetInnerHTML={{ __html: qr }} />
+					<figcaption className="mt-1 text-center font-mono text-lg text-black">
+						{pageUrl.replace(/^https?:\/\//, '')}
+					</figcaption>
+				</figure>
 				<p className="mt-4 text-2xl font-semibold">Scan to make {data.displayName} move</p>
-				<p className="mt-1 text-ink-muted">
-					{formatEther(data.price)} testnet 0G per move · {pageUrl.replace(/^https?:\/\//, '')}
-				</p>
+				<p className="mt-1 text-ink-muted">{formatEther(data.price)} testnet 0G per move</p>
 
 				<h2 className="mt-8 text-sm font-medium uppercase tracking-wider text-ink-muted">Up next</h2>
 				<ol className="mt-2 space-y-2 text-xl">
