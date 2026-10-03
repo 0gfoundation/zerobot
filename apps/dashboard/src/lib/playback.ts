@@ -138,16 +138,91 @@ function bodySamples(run: RecordingRun): BodySample[] {
 	});
 }
 
+/** Search range and step for aligning runs by body motion */
+const MAX_LAG_MS = 1000;
+const LAG_STEP_MS = 10;
+/** Below this pitch/roll range (rad) a run's body barely moves, so its timing can't be read from it */
+const MIN_MOTION_RAD = 0.05;
+
+/** Roll, pitch and height sampled every `LAG_STEP_MS` from t=0, or null if the body barely moves */
+function motionSignal(run: RecordingRun): number[][] | null {
+	const sport = (run.streams[SPORT_STATE] ?? []).filter((m) => m.data?.imu_state?.rpy);
+	if (sport.length < 2) return null;
+	const end = sport[sport.length - 1].t;
+	const out: number[][] = [];
+	let j = 0;
+	for (let t = 0; t <= end; t += LAG_STEP_MS) {
+		while (j < sport.length - 2 && sport[j + 1].t <= t) j++;
+		const a = sport[j];
+		const b = sport[j + 1];
+		const f = Math.min(Math.max((t - a.t) / (b.t - a.t || 1), 0), 1);
+		const pick = (m: RecordedMessage) => [
+			m.data.imu_state.rpy[0],
+			m.data.imu_state.rpy[1],
+			m.data.body_height ?? m.data.position?.[2] ?? 0
+		];
+		const va = pick(a);
+		const vb = pick(b);
+		out.push(va.map((v, k) => v + (vb[k] - v) * f));
+	}
+	const range = (k: number) => Math.max(...out.map((v) => v[k])) - Math.min(...out.map((v) => v[k]));
+	return Math.max(range(0), range(1)) >= MIN_MOTION_RAD ? out : null;
+}
+
+/** How many ms later run `a`'s motion happens than run `b`'s, by least squares over shifts */
+function motionLag(a: number[][], b: number[][]): number {
+	let best = 0;
+	let bestCost = Infinity;
+	for (let shift = -MAX_LAG_MS / LAG_STEP_MS; shift <= MAX_LAG_MS / LAG_STEP_MS; shift++) {
+		let cost = 0;
+		let n = 0;
+		for (let i = 0; i < b.length; i++) {
+			const ai = i + shift;
+			if (ai < 0 || ai >= a.length) continue;
+			for (let k = 0; k < 3; k++) cost += (a[ai][k] - b[i][k]) ** 2;
+			n++;
+		}
+		// Require most of the signal to overlap so large shifts can't win on a sliver
+		if (n < b.length / 2) continue;
+		if (cost / n < bestCost) {
+			bestCost = cost / n;
+			best = shift;
+		}
+	}
+	return best * LAG_STEP_MS;
+}
+
+/**
+ * The robot doesn't always start a trick the same time after the command
+ * (the first run of a session can lag by ~0.5 s), and merging by send time
+ * then pairs one run's body with other runs' legs. Find each run's delay
+ * from its 20 Hz body motion, relative to the most typical run, which also
+ * supplies the body pose. Runs whose body barely moves keep a delay of 0.
+ */
+function alignRuns(runs: RecordingRun[]): { lags: number[]; reference: number } {
+	const signals = runs.map(motionSignal);
+	const moving = signals.flatMap((s, i) => (s ? [i] : []));
+	if (moving.length < 2) return { lags: runs.map(() => 0), reference: 0 };
+
+	// Delays against the first moving run, then re-based on the run with the median delay
+	const first = signals[moving[0]]!;
+	const raw = signals.map((s, i) => (s && i !== moving[0] ? motionLag(s, first) : 0));
+	const byLag = [...moving].sort((a, b) => raw[a] - raw[b]);
+	const reference = byLag[Math.floor(byLag.length / 2)];
+	return { lags: raw.map((lag, i) => (signals[i] ? lag - raw[reference] : 0)), reference };
+}
+
 export function buildTimeline(file: RecordingFile): Timeline {
 	const runs: RecordingRun[] = file.runs ?? [
 		{ durationMs: file.durationMs ?? 0, streams: file.streams ?? {}, events: file.events ?? [] }
 	];
 	const motorCount = file.motorCount || GO2_JOINT_NAMES.length;
+	const { lags, reference } = alignRuns(runs);
 
 	const joints: JointSample[] = runs
 		.flatMap((run, i) =>
 			(run.streams[LOW_STATE] ?? []).map((m) => ({
-				t: m.t,
+				t: m.t - lags[i],
 				q: (m.data?.motor_state ?? []).slice(0, motorCount).map((s: { q: number }) => s.q),
 				run: i
 			}))
@@ -155,7 +230,7 @@ export function buildTimeline(file: RecordingFile): Timeline {
 		.filter((s) => s.q.length === motorCount)
 		.sort((a, b) => a.t - b.t);
 
-	const body = runs.length > 0 ? bodySamples(runs[0]) : [];
+	const body = runs.length > 0 ? bodySamples(runs[reference]).map((s) => ({ ...s, t: s.t - lags[reference] })) : [];
 	const times = [...joints.map((s) => s.t), ...body.map((s) => s.t)];
 
 	return {
