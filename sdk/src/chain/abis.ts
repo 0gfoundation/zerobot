@@ -68,6 +68,25 @@ export const REGISTRY_ABI = [
         "type": "bytes32"
       },
       {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "enabled",
+        "type": "bool"
+      }
+    ],
+    "name": "PublicCommandsSet",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "robotId",
+        "type": "bytes32"
+      },
+      {
         "indexed": true,
         "internalType": "address",
         "name": "owner",
@@ -174,6 +193,11 @@ export const REGISTRY_ABI = [
           {
             "internalType": "bool",
             "name": "active",
+            "type": "bool"
+          },
+          {
+            "internalType": "bool",
+            "name": "publicCommands",
             "type": "bool"
           },
           {
@@ -286,6 +310,24 @@ export const REGISTRY_ABI = [
         "type": "bytes32"
       },
       {
+        "internalType": "bool",
+        "name": "enabled",
+        "type": "bool"
+      }
+    ],
+    "name": "setPublicCommands",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "robotId",
+        "type": "bytes32"
+      },
+      {
         "internalType": "bytes32",
         "name": "storageRoot",
         "type": "bytes32"
@@ -375,6 +417,12 @@ export const DISPATCHER_ABI = [
       },
       {
         "indexed": false,
+        "internalType": "string",
+        "name": "note",
+        "type": "string"
+      },
+      {
+        "indexed": false,
         "internalType": "uint256",
         "name": "value",
         "type": "uint256"
@@ -428,6 +476,19 @@ export const DISPATCHER_ABI = [
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "MAX_NOTE_LENGTH",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "bytes32",
@@ -443,6 +504,11 @@ export const DISPATCHER_ABI = [
         "internalType": "string[]",
         "name": "parameters",
         "type": "string[]"
+      },
+      {
+        "internalType": "string",
+        "name": "note",
+        "type": "string"
       }
     ],
     "name": "dispatchBatch",
@@ -465,6 +531,11 @@ export const DISPATCHER_ABI = [
       {
         "internalType": "string",
         "name": "parameters",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "note",
         "type": "string"
       }
     ],
@@ -508,6 +579,11 @@ export const DISPATCHER_ABI = [
           {
             "internalType": "string",
             "name": "parameters",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "note",
             "type": "string"
           },
           {
@@ -579,6 +655,11 @@ export const DISPATCHER_ABI = [
           {
             "internalType": "string",
             "name": "parameters",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "note",
             "type": "string"
           },
           {

@@ -31,15 +31,17 @@ describe("RobotCommandDispatcher", function () {
         dispatcher.dispatchCommand(
           robotId,
           1016, // Hello
-          ""
+          "",
+          "Ada"
         )
       )
         .to.emit(dispatcher, "CommandDispatched")
-        .withArgs(robotId, 0, owner.address, 1016, "", 0);
+        .withArgs(robotId, 0, owner.address, 1016, "", "Ada", 0);
 
       const cmd = await dispatcher.getCommand(robotId, 0);
       expect(cmd.apiId).to.equal(1016);
       expect(cmd.sender).to.equal(owner.address);
+      expect(cmd.note).to.equal("Ada");
       expect(cmd.status).to.equal(0); // Pending
     });
 
@@ -50,7 +52,7 @@ describe("RobotCommandDispatcher", function () {
       await expect(
         dispatcher
           .connect(controller)
-          .dispatchCommand(robotId, 1008, '{"x":0.5,"y":0,"z":0}')
+          .dispatchCommand(robotId, 1008, '{"x":0.5,"y":0,"z":0}', "")
       )
         .to.emit(dispatcher, "CommandDispatched")
         .withArgs(
@@ -59,6 +61,7 @@ describe("RobotCommandDispatcher", function () {
           controller.address,
           1008,
           '{"x":0.5,"y":0,"z":0}',
+          "",
           0
         );
     });
@@ -67,14 +70,14 @@ describe("RobotCommandDispatcher", function () {
       const { dispatcher, other, robotId } =
         await loadFixture(deployFixture);
       await expect(
-        dispatcher.connect(other).dispatchCommand(robotId, 1016, "")
+        dispatcher.connect(other).dispatchCommand(robotId, 1016, "", "")
       ).to.be.revertedWith("Not authorized");
     });
 
     it("should increment nonce", async function () {
       const { dispatcher, robotId } = await loadFixture(deployFixture);
-      await dispatcher.dispatchCommand(robotId, 1004, "");
-      await dispatcher.dispatchCommand(robotId, 1016, "");
+      await dispatcher.dispatchCommand(robotId, 1004, "", "");
+      await dispatcher.dispatchCommand(robotId, 1016, "", "");
 
       expect(await dispatcher.getRobotNonce(robotId)).to.equal(2);
 
@@ -82,6 +85,51 @@ describe("RobotCommandDispatcher", function () {
       const cmd1 = await dispatcher.getCommand(robotId, 1);
       expect(cmd0.apiId).to.equal(1004);
       expect(cmd1.apiId).to.equal(1016);
+    });
+  });
+
+  describe("Public commands", function () {
+    it("should let anyone dispatch once the owner opens the robot", async function () {
+      const { registry, dispatcher, other, robotId } =
+        await loadFixture(deployFixture);
+      await registry.setPublicCommands(robotId, true);
+
+      await expect(
+        dispatcher.connect(other).dispatchCommand(robotId, 1016, "", "Grace")
+      )
+        .to.emit(dispatcher, "CommandDispatched")
+        .withArgs(robotId, 0, other.address, 1016, "", "Grace", 0);
+    });
+
+    it("should still charge the price to public senders", async function () {
+      const { registry, dispatcher, other, robotId } =
+        await loadFixture(deployFixture);
+      const price = ethers.parseEther("0.01");
+      await registry.setPublicCommands(robotId, true);
+      await registry.setCommandPrice(robotId, price);
+
+      await expect(
+        dispatcher.connect(other).dispatchCommand(robotId, 1016, "", "Grace")
+      ).to.be.revertedWith("Insufficient payment");
+      await expect(
+        dispatcher
+          .connect(other)
+          .dispatchCommand(robotId, 1016, "", "Grace", { value: price })
+      ).to.emit(dispatcher, "CommandDispatched");
+    });
+  });
+
+  describe("Note", function () {
+    it("should reject notes over 64 bytes", async function () {
+      const { dispatcher, robotId } = await loadFixture(deployFixture);
+      await expect(dispatcher.dispatchCommand(robotId, 1016, "", "a".repeat(64)))
+        .to.emit(dispatcher, "CommandDispatched");
+      await expect(
+        dispatcher.dispatchCommand(robotId, 1016, "", "a".repeat(65))
+      ).to.be.revertedWith("Note too long");
+      await expect(
+        dispatcher.dispatchBatch(robotId, [1016], [""], "a".repeat(65))
+      ).to.be.revertedWith("Note too long");
     });
   });
 
@@ -93,13 +141,13 @@ describe("RobotCommandDispatcher", function () {
       await registry.setCommandPrice(robotId, price);
 
       await expect(
-        dispatcher.connect(controller).dispatchCommand(robotId, 1016, "")
+        dispatcher.connect(controller).dispatchCommand(robotId, 1016, "", "")
       ).to.be.revertedWith("Insufficient payment");
 
       await expect(
         dispatcher
           .connect(controller)
-          .dispatchCommand(robotId, 1016, "", { value: price })
+          .dispatchCommand(robotId, 1016, "", "", { value: price })
       ).to.emit(dispatcher, "CommandDispatched");
     });
 
@@ -112,13 +160,13 @@ describe("RobotCommandDispatcher", function () {
       // Send 3 commands
       await dispatcher
         .connect(controller)
-        .dispatchCommand(robotId, 1016, "", { value: price });
+        .dispatchCommand(robotId, 1016, "", "", { value: price });
       await dispatcher
         .connect(controller)
-        .dispatchCommand(robotId, 1017, "", { value: price });
+        .dispatchCommand(robotId, 1017, "", "", { value: price });
       await dispatcher
         .connect(controller)
-        .dispatchCommand(robotId, 1004, "", { value: price });
+        .dispatchCommand(robotId, 1004, "", "", { value: price });
 
       const expectedBalance = price * 3n;
 
@@ -143,10 +191,12 @@ describe("RobotCommandDispatcher", function () {
       await dispatcher.dispatchBatch(
         robotId,
         [1004, 1016, 1008],
-        ["", "", '{"x":0.3,"y":0,"z":0}']
+        ["", "", '{"x":0.3,"y":0,"z":0}'],
+        "Ada"
       );
 
       expect(await dispatcher.getRobotNonce(robotId)).to.equal(3);
+      expect((await dispatcher.getCommand(robotId, 2)).note).to.equal("Ada");
     });
 
     it("should require total payment for batch", async function () {
@@ -158,7 +208,7 @@ describe("RobotCommandDispatcher", function () {
       await expect(
         dispatcher
           .connect(controller)
-          .dispatchBatch(robotId, [1004, 1016], ["", ""], {
+          .dispatchBatch(robotId, [1004, 1016], ["", ""], "", {
             value: price,
           })
       ).to.be.revertedWith("Insufficient payment");
@@ -166,7 +216,7 @@ describe("RobotCommandDispatcher", function () {
       await expect(
         dispatcher
           .connect(controller)
-          .dispatchBatch(robotId, [1004, 1016], ["", ""], {
+          .dispatchBatch(robotId, [1004, 1016], ["", ""], "", {
             value: price * 2n,
           })
       ).to.emit(dispatcher, "CommandDispatched");
@@ -176,7 +226,7 @@ describe("RobotCommandDispatcher", function () {
   describe("Receipts", function () {
     it("should allow owner to submit receipt", async function () {
       const { dispatcher, robotId } = await loadFixture(deployFixture);
-      await dispatcher.dispatchCommand(robotId, 1016, "");
+      await dispatcher.dispatchCommand(robotId, 1016, "", "");
 
       await expect(dispatcher.submitReceipt(robotId, 0, true, "ok"))
         .to.emit(dispatcher, "CommandExecuted")
@@ -188,7 +238,7 @@ describe("RobotCommandDispatcher", function () {
 
     it("should reject duplicate receipt", async function () {
       const { dispatcher, robotId } = await loadFixture(deployFixture);
-      await dispatcher.dispatchCommand(robotId, 1016, "");
+      await dispatcher.dispatchCommand(robotId, 1016, "", "");
       await dispatcher.submitReceipt(robotId, 0, true, "ok");
 
       await expect(
@@ -199,7 +249,7 @@ describe("RobotCommandDispatcher", function () {
     it("should reject receipt from non-owner", async function () {
       const { dispatcher, controller, robotId } =
         await loadFixture(deployFixture);
-      await dispatcher.dispatchCommand(robotId, 1016, "");
+      await dispatcher.dispatchCommand(robotId, 1016, "", "");
 
       await expect(
         dispatcher.connect(controller).submitReceipt(robotId, 0, true, "ok")
@@ -211,9 +261,9 @@ describe("RobotCommandDispatcher", function () {
     it("should return only pending commands", async function () {
       const { dispatcher, robotId } = await loadFixture(deployFixture);
 
-      await dispatcher.dispatchCommand(robotId, 1004, "");
-      await dispatcher.dispatchCommand(robotId, 1016, "");
-      await dispatcher.dispatchCommand(robotId, 1008, '{"x":0.3}');
+      await dispatcher.dispatchCommand(robotId, 1004, "", "");
+      await dispatcher.dispatchCommand(robotId, 1016, "", "");
+      await dispatcher.dispatchCommand(robotId, 1008, '{"x":0.3}', "");
 
       // Mark first as executed
       await dispatcher.submitReceipt(robotId, 0, true, "");

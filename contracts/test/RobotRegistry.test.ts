@@ -95,6 +95,35 @@ describe("RobotRegistry", function () {
       expect(await registry.isAuthorized(robotId, other.address)).to.be.false;
     });
 
+    it("should authorize anyone when public commands are enabled", async function () {
+      const { registry, other, robotId } = await loadFixture(deployFixture);
+      await registry.registerRobot(robotId, "go2-pro-001", "go2_pro", ZERO_ROOT);
+      await expect(registry.setPublicCommands(robotId, true))
+        .to.emit(registry, "PublicCommandsSet")
+        .withArgs(robotId, true);
+      expect((await registry.getRobot(robotId)).publicCommands).to.be.true;
+      expect(await registry.isAuthorized(robotId, other.address)).to.be.true;
+
+      await registry.setPublicCommands(robotId, false);
+      expect(await registry.isAuthorized(robotId, other.address)).to.be.false;
+    });
+
+    it("should reject public commands toggle from non-owner", async function () {
+      const { registry, other, robotId } = await loadFixture(deployFixture);
+      await registry.registerRobot(robotId, "go2-pro-001", "go2_pro", ZERO_ROOT);
+      await expect(
+        registry.connect(other).setPublicCommands(robotId, true)
+      ).to.be.revertedWith("Not robot owner");
+    });
+
+    it("should not authorize public senders for inactive robots", async function () {
+      const { registry, other, robotId } = await loadFixture(deployFixture);
+      await registry.registerRobot(robotId, "go2-pro-001", "go2_pro", ZERO_ROOT);
+      await registry.setPublicCommands(robotId, true);
+      await registry.updateRobot(robotId, ZERO_ROOT, false);
+      expect(await registry.isAuthorized(robotId, other.address)).to.be.false;
+    });
+
     it("should not authorize for inactive robots", async function () {
       const { registry, owner, robotId } = await loadFixture(deployFixture);
       await registry.registerRobot(robotId, "go2-pro-001", "go2_pro", ZERO_ROOT);

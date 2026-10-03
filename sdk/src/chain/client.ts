@@ -1,5 +1,5 @@
 import { ethers, type ContractTransactionReceipt } from "ethers";
-import type { ChainConfig, Robot } from "../types/chain.js";
+import type { ChainConfig, DispatchOptions, Robot } from "../types/chain.js";
 import type { CommandPayload } from "../types/commands.js";
 import { REGISTRY_ABI, DISPATCHER_ABI } from "./abis.js";
 import { resolveSigner } from "./adapter.js";
@@ -118,42 +118,53 @@ export class ChainClient {
   }
 
   /**
+   * Let anyone dispatch commands to this robot, as long as they pay the
+   * command price. Owner and controllers are unaffected. Only callable by
+   * the owner.
+   */
+  async setPublicCommands(
+    robotId: string,
+    enabled: boolean,
+  ): Promise<ContractTransactionReceipt | null> {
+    const tx = await this.registry.setPublicCommands(robotId, enabled);
+    return tx.wait();
+  }
+
+  /**
    * Dispatch a single command on-chain.
    *
    * @param parameters Command params serialized as a JSON string (e.g.
    *   `JSON.stringify({x: 0.5, y: 0, z: 0})`); pass `""` for commands that
    *   take no parameters. This string ends up double-serialized when the
    *   robot receives it via WebRTC — the contract treats it as opaque.
-   * @param value Wei to include. Must be at least the robot's
-   *   `commandPrice` or the call reverts. Defaults to `0`.
-   * @throws If `msg.sender` is not authorized (owner or controller).
+   * @throws If `msg.sender` is not authorized (owner, controller, or anyone
+   *   when the robot has public commands enabled).
    */
   async dispatchCommand(
     robotId: string,
     apiId: number,
     parameters: string,
-    value?: bigint,
+    { value = 0n, note = "" }: DispatchOptions = {},
   ): Promise<ContractTransactionReceipt | null> {
     const tx = await this.dispatcher.dispatchCommand(
       robotId,
       apiId,
       parameters,
-      { value: value ?? 0n },
+      note,
+      { value },
     );
     return tx.wait();
   }
 
   /**
    * Dispatch multiple commands atomically in one transaction. Cheaper than
-   * N separate `dispatchCommand` calls when batching is acceptable.
-   *
-   * @param value Wei to include. Must be at least
-   *   `commandPrice * commands.length` or the call reverts. Defaults to `0`.
+   * N separate `dispatchCommand` calls when batching is acceptable. The
+   * `note` is stored on every command in the batch.
    */
   async dispatchBatch(
     robotId: string,
     commands: CommandPayload[],
-    value?: bigint,
+    { value = 0n, note = "" }: DispatchOptions = {},
   ): Promise<ContractTransactionReceipt | null> {
     const apiIds = commands.map((c) => c.apiId);
     const params = commands.map((c) =>
@@ -163,7 +174,8 @@ export class ChainClient {
       robotId,
       apiIds,
       params,
-      { value: value ?? 0n },
+      note,
+      { value },
     );
     return tx.wait();
   }
@@ -226,7 +238,9 @@ export class ChainClient {
 
   /**
    * Check whether an address is authorized to dispatch commands for this
-   * robot — returns true for the owner OR any added controller.
+   * robot — returns true for the owner, any added controller, or any address
+   * when the robot has public commands enabled. Always false while the robot
+   * is inactive.
    */
   async isAuthorized(robotId: string, address: string): Promise<boolean> {
     return this.registry.isAuthorized(robotId, address);
@@ -248,6 +262,7 @@ export class ChainClient {
       robotType: r.robotType,
       storageRoot: r.storageRoot,
       active: r.active,
+      publicCommands: r.publicCommands,
       registeredAt: r.registeredAt,
     };
   }

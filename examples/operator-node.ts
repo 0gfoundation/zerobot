@@ -43,7 +43,7 @@ async function main(): Promise<void> {
 
   operator.on("commandReceived", (cmd) => {
     console.log(
-      `Command received: apiId=${cmd.apiId}, nonce=${cmd.nonce}, sender=${cmd.sender}`,
+      `Command received: apiId=${cmd.apiId}, nonce=${cmd.nonce}, sender=${cmd.sender}${cmd.note ? `, note="${cmd.note}"` : ""}`,
     );
   });
 

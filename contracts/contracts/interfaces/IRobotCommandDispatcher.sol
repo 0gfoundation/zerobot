@@ -9,6 +9,8 @@ interface IRobotCommandDispatcher {
         address sender;
         uint32 apiId;
         string parameters;
+        // Free text from the sender, e.g. their name, shown alongside the command
+        string note;
         uint256 value;
         uint256 timestamp;
         uint256 nonce;
@@ -21,6 +23,7 @@ interface IRobotCommandDispatcher {
         address indexed sender,
         uint32 apiId,
         string parameters,
+        string note,
         uint256 value
     );
 
@@ -33,8 +36,8 @@ interface IRobotCommandDispatcher {
 
     event BalanceWithdrawn(bytes32 indexed robotId, address indexed owner, uint256 amount);
 
-    function dispatchCommand(bytes32 robotId, uint32 apiId, string calldata parameters) external payable;
-    function dispatchBatch(bytes32 robotId, uint32[] calldata apiIds, string[] calldata parameters) external payable;
+    function dispatchCommand(bytes32 robotId, uint32 apiId, string calldata parameters, string calldata note) external payable;
+    function dispatchBatch(bytes32 robotId, uint32[] calldata apiIds, string[] calldata parameters, string calldata note) external payable;
     function submitReceipt(bytes32 robotId, uint256 nonce, bool success, string calldata resultData) external;
     function withdrawBalance(bytes32 robotId) external;
     function getCommand(bytes32 robotId, uint256 nonce) external view returns (Command memory);

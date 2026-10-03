@@ -12,6 +12,7 @@ contract RobotCommandDispatcher is IRobotCommandDispatcher {
     mapping(bytes32 => uint256) private _pendingBalance;
 
     uint256 public constant COMMAND_EXPIRY = 5 minutes;
+    uint256 public constant MAX_NOTE_LENGTH = 64;
 
     constructor(address registryAddress) {
         registry = IRobotRegistry(registryAddress);
@@ -20,18 +21,21 @@ contract RobotCommandDispatcher is IRobotCommandDispatcher {
     function dispatchCommand(
         bytes32 robotId,
         uint32 apiId,
-        string calldata parameters
+        string calldata parameters,
+        string calldata note
     ) external payable {
-        _dispatch(robotId, apiId, parameters);
+        _dispatch(robotId, apiId, parameters, note);
     }
 
     function dispatchBatch(
         bytes32 robotId,
         uint32[] calldata apiIds,
-        string[] calldata parameters
+        string[] calldata parameters,
+        string calldata note
     ) external payable {
         require(apiIds.length == parameters.length, "Array length mismatch");
         require(apiIds.length > 0, "Empty batch");
+        require(bytes(note).length <= MAX_NOTE_LENGTH, "Note too long");
 
         uint256 price = registry.getCommandPrice(robotId);
         if (price > 0) {
@@ -42,7 +46,7 @@ contract RobotCommandDispatcher is IRobotCommandDispatcher {
         require(registry.isAuthorized(robotId, msg.sender), "Not authorized");
 
         for (uint256 i = 0; i < apiIds.length; i++) {
-            _dispatchInternal(robotId, apiIds[i], parameters[i]);
+            _dispatchInternal(robotId, apiIds[i], parameters[i], note);
         }
 
         if (price > 0) {
@@ -125,9 +129,11 @@ contract RobotCommandDispatcher is IRobotCommandDispatcher {
     function _dispatch(
         bytes32 robotId,
         uint32 apiId,
-        string calldata parameters
+        string calldata parameters,
+        string calldata note
     ) internal {
         require(registry.isAuthorized(robotId, msg.sender), "Not authorized");
+        require(bytes(note).length <= MAX_NOTE_LENGTH, "Note too long");
 
         uint256 price = registry.getCommandPrice(robotId);
         if (price > 0) {
@@ -135,13 +141,14 @@ contract RobotCommandDispatcher is IRobotCommandDispatcher {
             _pendingBalance[robotId] += msg.value;
         }
 
-        _dispatchInternal(robotId, apiId, parameters);
+        _dispatchInternal(robotId, apiId, parameters, note);
     }
 
     function _dispatchInternal(
         bytes32 robotId,
         uint32 apiId,
-        string calldata parameters
+        string calldata parameters,
+        string calldata note
     ) internal {
         uint256 nonce = _robotNonce[robotId]++;
 
@@ -150,12 +157,13 @@ contract RobotCommandDispatcher is IRobotCommandDispatcher {
             sender: msg.sender,
             apiId: apiId,
             parameters: parameters,
+            note: note,
             value: msg.value,
             timestamp: block.timestamp,
             nonce: nonce,
             status: CommandStatus.Pending
         });
 
-        emit CommandDispatched(robotId, nonce, msg.sender, apiId, parameters, msg.value);
+        emit CommandDispatched(robotId, nonce, msg.sender, apiId, parameters, note, msg.value);
     }
 }

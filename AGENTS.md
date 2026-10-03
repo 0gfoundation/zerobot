@@ -97,8 +97,8 @@ The SDK exposes four entry points (see `exports` in `sdk/package.json`), split a
 
 ### Smart Contracts
 
-- **RobotRegistry** — Robot identity, owner/controller permissions, command pricing. `msg.sender` becomes owner on registration (permissionless, no admin).
-- **RobotCommandDispatcher** — Command queue with monotonic nonces, 5-minute expiry, payment enforcement, execution receipts. References Registry for authorization.
+- **RobotRegistry** — Robot identity, owner/controller permissions, command pricing. `msg.sender` becomes owner on registration (permissionless, no admin). `setPublicCommands` lets anyone dispatch to a robot, still paying its command price.
+- **RobotCommandDispatcher** — Command queue with monotonic nonces, 5-minute expiry, payment enforcement, execution receipts. References Registry for authorization. Each command carries a free-text `note` (max 64 bytes), e.g. the sender's name. The nonce is the queue order.
 
 ## Robot Compatibility
 
@@ -138,6 +138,6 @@ G1 uses `LocoClient` (not `SportClient`) with different API IDs and topics (`rt/
 
 ## Deployed Contracts (Galileo Testnet)
 
-- Registry: `0x2312cE812E35a9cBb65Fa692e566Df4C61D9Ba74`
-- Dispatcher: `0xddc4C76Ea5bE99EC754a8de3FC470364aa29c0b8`
+- Registry: `0xe7A2A87608f55F2F5ba2fFa63A6F20F1e55E5e14`
+- Dispatcher: `0x5f8b7440bcB70D6CEdC2C2767BB1E696d970760d`
 - Chain ID: 16602, RPC: `https://evmrpc-testnet.0g.ai`

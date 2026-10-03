@@ -1,6 +1,6 @@
 import type { ContractTransactionReceipt } from "ethers";
 import { ChainClient } from "../chain/client.js";
-import type { ChainConfig } from "../types/chain.js";
+import type { ChainConfig, DispatchOptions } from "../types/chain.js";
 import type { CommandPayload } from "../types/commands.js";
 
 /**
@@ -25,35 +25,31 @@ export class Commander {
   /**
    * Send a single command on-chain. The payload's `params` object is
    * JSON-stringified into the contract's `parameters` field; the call
-   * auto-waits for the transaction receipt.
-   *
-   * @param value Wei to include — must be at least the robot's
-   *   `commandPrice` (see `ChainClient.getCommandPrice`). Defaults to `0`.
+   * auto-waits for the transaction receipt. See `DispatchOptions` for the
+   * payment and note.
    */
   async sendCommand(
     robotId: string,
     command: CommandPayload,
-    value?: bigint,
+    options?: DispatchOptions,
   ): Promise<ContractTransactionReceipt | null> {
     return this.client.dispatchCommand(
       robotId,
       command.apiId,
       command.params ? JSON.stringify(command.params) : "",
-      value,
+      options,
     );
   }
 
   /**
-   * Send multiple commands atomically.
-   *
-   * @param value Wei to include — must be at least
-   *   `commandPrice * commands.length`. Defaults to `0`.
+   * Send multiple commands atomically. The `value` in `options` must cover
+   * `commandPrice * commands.length`.
    */
   async sendBatch(
     robotId: string,
     commands: CommandPayload[],
-    value?: bigint,
+    options?: DispatchOptions,
   ): Promise<ContractTransactionReceipt | null> {
-    return this.client.dispatchBatch(robotId, commands, value);
+    return this.client.dispatchBatch(robotId, commands, options);
   }
 }

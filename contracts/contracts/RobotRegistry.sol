@@ -32,6 +32,7 @@ contract RobotRegistry is IRobotRegistry {
             robotType: robotType,
             storageRoot: storageRoot,
             active: true,
+            publicCommands: false,
             registeredAt: block.timestamp
         });
 
@@ -73,6 +74,14 @@ contract RobotRegistry is IRobotRegistry {
         emit CommandPriceSet(robotId, price);
     }
 
+    function setPublicCommands(
+        bytes32 robotId,
+        bool enabled
+    ) external onlyOwner(robotId) {
+        _robots[robotId].publicCommands = enabled;
+        emit PublicCommandsSet(robotId, enabled);
+    }
+
     function isAuthorized(
         bytes32 robotId,
         address caller
@@ -80,7 +89,10 @@ contract RobotRegistry is IRobotRegistry {
         Robot storage robot = _robots[robotId];
         if (robot.owner == address(0)) return false;
         if (!robot.active) return false;
-        return robot.owner == caller || _controllers[robotId][caller];
+        return
+            robot.publicCommands ||
+            robot.owner == caller ||
+            _controllers[robotId][caller];
     }
 
     function getRobot(bytes32 robotId) external view returns (Robot memory) {

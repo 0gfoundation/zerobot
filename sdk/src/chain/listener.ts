@@ -78,6 +78,7 @@ export class ChainListener extends EventEmitter<ChainListenerEvents> {
         sender: string,
         apiId: number,
         parameters: string,
+        note: string,
         value: bigint,
       ) => {
         const command: OnChainCommand = {
@@ -86,6 +87,7 @@ export class ChainListener extends EventEmitter<ChainListenerEvents> {
           sender,
           apiId,
           parameters,
+          note,
           value,
           timestamp: BigInt(Math.floor(Date.now() / 1000)),
         };
@@ -125,6 +127,7 @@ export class ChainListener extends EventEmitter<ChainListenerEvents> {
         sender: cmd.sender as string,
         apiId: Number(cmd.apiId),
         parameters: cmd.parameters as string,
+        note: cmd.note as string,
         value: cmd.value as bigint,
         timestamp: cmd.timestamp as bigint,
       };
