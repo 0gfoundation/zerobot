@@ -111,6 +111,19 @@ describe("Go2Signaling", () => {
     await expect(new Go2Signaling(IP).negotiate("v=0 offer")).resolves.toBe(SDP_ANSWER);
   });
 
+  it("uses the port option for both signaling requests", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        urls.push(url);
+        throw new TypeError("fetch failed");
+      }),
+    );
+    await expect(new Go2Signaling(IP, { port: 9992 }).negotiate("v=0 offer")).rejects.toThrow();
+    expect(urls[0]).toBe(`http://${IP}:9992/con_notify`);
+  });
+
   it("forwards deviceKey to the signaling proxy and surfaces its error", async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({ error: "deviceKey was rejected" }, { status: 500 }),
