@@ -212,17 +212,20 @@ function handleDataChannelMessage(
         `[mock] Command: ${cmdName}${params ? ` params=${params}` : ""}`,
       );
 
-      // Send response acknowledging the command
-      dc.send(
-        JSON.stringify({
-          type: "res",
-          topic: msg.topic,
-          data: {
-            header: { identity: { id, api_id: apiId } },
-            data: { ret: 0, error: "" },
-          },
-        }),
-      );
+      // Reply once the move would be done, as the real robot does
+      setTimeout(() => {
+        if (dc.readyState !== "open") return;
+        dc.send(
+          JSON.stringify({
+            type: "res",
+            topic: "rt/api/sport/response",
+            data: {
+              header: { identity: { id, api_id: apiId }, status: { code: 0 } },
+              data: "",
+            },
+          }),
+        );
+      }, schema?.estimatedDurationMs ?? 0);
       break;
     }
 

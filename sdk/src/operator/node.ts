@@ -101,7 +101,8 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
    * until `stop()` is called. Idempotent — calling twice is a no-op.
    *
    * Commands run one at a time in nonce order, each followed by its schema's
-   * exit command if it has one. The receipt goes out once the robot is done,
+   * exit command if it has one. Each waits for the robot's reply, which it
+   * sends once the move is done. The receipt goes out after that,
    * so the oldest pending nonce on-chain is the one running or next up.
    * Commands older than 5 minutes (matches the contract's `COMMAND_EXPIRY`)
    * or not in `allowedApiIds` get `success=false` receipts and never run.
@@ -210,21 +211,14 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
         }
         this.connection.sportCommand(SportCommand.StopMove);
       } else {
-        // Single command
-        this.connection.sportCommand(cmd.apiId as SportCommand, params);
-
-        // Wait for estimated command duration
-        const schema = SCHEMA_BY_API_ID.get(cmd.apiId);
-        if (schema && schema.estimatedDurationMs > 0) {
-          await sleep(schema.estimatedDurationMs);
-        }
+        // Single command, run until the robot says it's done
+        await this.runAndWait(cmd.apiId, params);
 
         // Return to standing, e.g. RiseSit after Sit
-        if (schema?.exitApiId !== undefined) {
+        const exitApiId = SCHEMA_BY_API_ID.get(cmd.apiId)?.exitApiId;
+        if (exitApiId !== undefined) {
           await sleep(this.settleMs);
-          this.connection.sportCommand(schema.exitApiId as SportCommand);
-          const exit = SCHEMA_BY_API_ID.get(schema.exitApiId);
-          await sleep(exit?.estimatedDurationMs ?? 0);
+          await this.runAndWait(exitApiId);
         }
       }
 
@@ -235,6 +229,30 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     }
 
     await sleep(this.settleMs);
+  }
+
+  /**
+   * Send a sport command and wait for the robot's reply, which comes once
+   * the move is done. Without a reply, fall back to twice the schema's
+   * duration so a dropped reply can't stall the queue.
+   *
+   * @throws If the robot replies with a non-zero status code.
+   */
+  private async runAndWait(
+    apiId: number,
+    params?: Record<string, unknown>,
+  ): Promise<void> {
+    const estimate = SCHEMA_BY_API_ID.get(apiId)?.estimatedDurationMs ?? 0;
+    const code = await this.connection.sportCommandAndWait(
+      apiId as SportCommand,
+      params,
+      Math.max(estimate * 2, 3000),
+    );
+    if (code === null) {
+      this.emit("error", new Error(`No reply from the robot to apiId ${apiId}`));
+    } else if (code !== 0) {
+      throw new Error(`Robot replied with code ${code} to apiId ${apiId}`);
+    }
   }
 
   private finish(cmd: OnChainCommand, success: boolean, resultData: string): void {

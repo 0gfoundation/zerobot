@@ -4,7 +4,7 @@ import type { SportCommand } from "../types/commands.js";
 /**
  * Generate a unique message ID (matches Python: timestamp_ms % 2^31 + random).
  */
-function generateMessageId(): number {
+export function generateMessageId(): number {
   return (Date.now() % 2147483648) + Math.floor(Math.random() * 1000);
 }
 
@@ -17,6 +17,7 @@ function generateMessageId(): number {
 export function buildSportCommandMessage(
   apiId: SportCommand,
   parameters?: Record<string, unknown>,
+  id = generateMessageId(),
 ): string {
   return JSON.stringify({
     type: DataChannelType.REQUEST,
@@ -24,7 +25,7 @@ export function buildSportCommandMessage(
     data: {
       header: {
         identity: {
-          id: generateMessageId(),
+          id,
           api_id: apiId,
         },
       },

@@ -12,6 +12,8 @@ export interface RobotConfig {
    * to. With `signalingProxyUrl`, it is sent to the proxy in the request body.
    */
   deviceKey?: string;
+  /** Signaling port. Defaults to the robot's 9991; set it to reach a mock robot elsewhere. */
+  port?: number;
 }
 
 export type ConnectionStatus =

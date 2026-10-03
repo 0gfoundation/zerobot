@@ -92,5 +92,11 @@ export interface CommandSchema {
       required?: boolean;
     };
   };
+  /**
+   * How long the move takes. For Go2 actions this is when the robot replies
+   * to the command, which it does once the move is done. Hello, Stretch and
+   * Sit are measured from 10-run recordings (Go2 Pro, firmware 1.1.15), the
+   * rest are estimates.
+   */
   estimatedDurationMs: number;
 }
