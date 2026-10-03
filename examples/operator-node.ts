@@ -5,6 +5,7 @@
  *   cp ../.env.example .env  # fill in values
  *   npx tsx operator-node.ts
  *   npx tsx operator-node.ts menus/go2-pro-larry.json  # only run the menu's moves
+ *   ROBOT_IP=127.0.0.1 ROBOT_PORT=9993 npx tsx operator-node.ts menus/go2-pro-larry.json  # against mock-robot.ts --port 9993
  */
 import "dotenv/config";
 import { readFileSync } from "node:fs";
@@ -14,6 +15,8 @@ import { OperatorNode } from "@0g-foundation/zerobot-sdk/operator";
 const {
   ROBOT_IP = "192.168.123.18",
   ROBOT_DEVICE_KEY,
+  // Set with ROBOT_IP=127.0.0.1 to drive a mock robot (mock-robot.ts --port <n>)
+  ROBOT_PORT,
   RPC_URL = "https://evmrpc-testnet.0g.ai",
   OPERATOR_PRIVATE_KEY,
   REGISTRY_ADDRESS,
@@ -52,7 +55,7 @@ async function main(): Promise<void> {
   const describe = (apiId: number) => labels.get(apiId) ?? `apiId=${apiId}`;
 
   const operator = new OperatorNode(
-    { ip: ROBOT_IP, deviceKey: ROBOT_DEVICE_KEY },
+    { ip: ROBOT_IP, deviceKey: ROBOT_DEVICE_KEY, port: ROBOT_PORT ? Number(ROBOT_PORT) : undefined },
     chainConfig,
     ROBOT_ID!,
     { allowedApiIds },
