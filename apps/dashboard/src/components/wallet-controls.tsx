@@ -62,7 +62,7 @@ export function WalletControls() {
 					{clicked ? 'Connecting…' : 'Connect wallet'}
 				</Button>
 				{error && (
-					<p className="absolute right-0 mt-2 w-64 rounded-xl bg-bg p-3 text-sm text-red-600 shadow-lg">{error}</p>
+					<p className="absolute right-0 mt-2 w-64 rounded-xl bg-bg p-3 text-sm text-danger shadow-lg">{error}</p>
 				)}
 			</div>
 		);

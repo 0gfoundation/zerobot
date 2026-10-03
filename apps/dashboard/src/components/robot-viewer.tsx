@@ -294,7 +294,7 @@ export function RobotViewer({
 			)}
 			{error && (
 				<div className="absolute inset-0 flex items-center justify-center">
-					<span className="text-sm text-red-600">{error}</span>
+					<span className="text-sm text-danger">{error}</span>
 				</div>
 			)}
 		</div>

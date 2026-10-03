@@ -9,6 +9,7 @@ import {
 	type ShellLinkItem,
 	type ShellLinkProps
 } from '@0gfoundation/0g-ui/shell';
+import { ThemeButton } from '@0gfoundation/0g-ui/theme';
 import { LOCAL_MODE } from '@/lib/mode';
 import { WalletControls } from './wallet-controls';
 
@@ -58,7 +59,12 @@ export function SiteHeader() {
 				logo={<Lockup />}
 				items={ITEMS}
 				navLabel="Main"
-				controls={<WalletControls />}
+				controls={
+					<div className="flex items-center gap-2">
+						<ThemeButton toDarkLabel="Switch to dark mode" toLightLabel="Switch to light mode" />
+						<WalletControls />
+					</div>
+				}
 				collapse="md"
 				menu={{ label: 'Menu', closeLabel: 'Close menu' }}
 			/>

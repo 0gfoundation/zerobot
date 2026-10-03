@@ -5,6 +5,17 @@
 @theme {
 	--font-sans: var(--font-geist-sans), system-ui, sans-serif;
 	--font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+	/* Status colours, lighter in dark mode to keep their contrast */
+	--color-danger: #dc2626;
+	--color-success: #15803d;
+	--color-warning: #b45309;
+}
+
+[data-theme='dark'] {
+	--color-danger: #f87171;
+	--color-success: #4ade80;
+	--color-warning: #fbbf24;
 }
 
 body {

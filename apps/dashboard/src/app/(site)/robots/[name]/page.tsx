@@ -72,7 +72,7 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 	}
 
 	if (robot.isPending) return <p className="text-ink-muted">Loading…</p>;
-	if (robot.error) return <p className="text-red-600">Couldn&apos;t load this robot: {robot.error.message}</p>;
+	if (robot.error) return <p className="text-danger">Couldn&apos;t load this robot: {robot.error.message}</p>;
 	if (!data) return <p>No robot called “{name}”.</p>;
 
 	const displayName = data.displayName;
@@ -138,7 +138,7 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 							maxLength={MAX_NOTE_BYTES}
 							className="w-full rounded-xl border border-hairline bg-bg px-4 py-3 text-base outline-none focus:border-ink"
 						/>
-						{noteBytes > MAX_NOTE_BYTES && <p className="mt-1 text-sm text-red-600">That name is too long.</p>}
+						{noteBytes > MAX_NOTE_BYTES && <p className="mt-1 text-sm text-danger">That name is too long.</p>}
 					</Step>
 
 					<Step n={4} title="Pick a move" done={Boolean(move)}>
@@ -162,7 +162,7 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 						</div>
 					</Step>
 
-					{submission?.error && <p className="mt-4 text-sm text-red-600">{submission.error}</p>}
+					{submission?.error && <p className="mt-4 text-sm text-danger">{submission.error}</p>}
 
 					<div className="mt-6">
 						<Button
@@ -212,7 +212,7 @@ function Step({
 			<h2 className="flex items-center gap-2 font-medium">
 				<span
 					className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${
-						done ? 'bg-green-600 text-white' : 'bg-ink text-on-ink'
+						done ? 'bg-success text-bg' : 'bg-ink text-on-ink'
 					}`}
 				>
 					{done ? '✓' : n}

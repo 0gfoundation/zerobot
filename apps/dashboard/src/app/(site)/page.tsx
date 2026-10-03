@@ -92,7 +92,7 @@ export default function OwnerPage() {
 				{robots.isPending ? (
 					<p className="text-sm text-ink-muted">Loading…</p>
 				) : robots.error ? (
-					<p className="text-sm text-red-600">{errorMessage(robots.error)}</p>
+					<p className="text-sm text-danger">{errorMessage(robots.error)}</p>
 				) : robots.data.length === 0 ? (
 					<p className="text-sm text-ink-muted">No robots registered yet.</p>
 				) : (
@@ -179,7 +179,7 @@ function RobotRow({
 			<div className="flex flex-wrap items-center gap-2">
 				<span className="font-medium">{r.name}</span>
 				<span className="text-sm text-ink-muted">{ROBOT_TYPE_LABELS[r.robotType] ?? r.robotType}</span>
-				<span className={`${badge} ${r.active ? 'bg-green-600/15 text-green-700' : 'bg-red-600/15 text-red-700'}`}>
+				<span className={`${badge} ${r.active ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'}`}>
 					{r.active ? 'Active' : 'Inactive'}
 				</span>
 				{r.publicCommands && <span className={`${badge} bg-ink/10`}>Public</span>}

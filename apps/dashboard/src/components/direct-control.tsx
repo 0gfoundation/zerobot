@@ -173,7 +173,7 @@ export function DirectControl({
 						)}
 					</div>
 				)}
-				{robot.error && <p className="mt-2 text-sm text-red-600">{robot.error}</p>}
+				{robot.error && <p className="mt-2 text-sm text-danger">{robot.error}</p>}
 			</section>
 
 			<RobotViewer robotType={robotType} className="mt-4 h-72 border border-hairline" />
@@ -226,7 +226,7 @@ export function DirectControl({
 							</div>
 							<div className="flex gap-1">
 								<button type="button" className={pad} title="Strafe left" {...hold(0, speed, 0)}>←</button>
-								<button type="button" className={`${pad} text-red-600`} title="Stop" onClick={() => robot.stopMove(robotType)}>■</button>
+								<button type="button" className={`${pad} text-danger`} title="Stop" onClick={() => robot.stopMove(robotType)}>■</button>
 								<button type="button" className={pad} title="Strafe right" {...hold(0, -speed, 0)}>→</button>
 							</div>
 							<div className="flex gap-1">

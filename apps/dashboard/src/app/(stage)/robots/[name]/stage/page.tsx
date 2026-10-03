@@ -148,7 +148,7 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 					onLoad={() => setViewerReady(true)}
 					className="min-h-0 flex-1"
 				/>
-				{error && <p className="absolute bottom-0 left-0 text-sm text-red-500">Chain: {error}</p>}
+				{error && <p className="absolute bottom-0 left-0 text-sm text-danger">Chain: {error}</p>}
 			</section>
 
 			<aside className="flex min-h-0 flex-col">

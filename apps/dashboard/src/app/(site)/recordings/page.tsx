@@ -199,9 +199,9 @@ export default function RecordingsPage() {
 								className="h-[26rem] border border-hairline"
 							/>
 							{selected.robot !== 'go2' && (
-								<p className="mt-3 text-sm text-amber-600">Playback only maps Go2 joints so far.</p>
+								<p className="mt-3 text-sm text-warning">Playback only maps Go2 joints so far.</p>
 							)}
-							{loadError && <p className="mt-3 text-sm text-red-600">{loadError}</p>}
+							{loadError && <p className="mt-3 text-sm text-danger">{loadError}</p>}
 
 							{timeline && viewerReady && (
 								<>
