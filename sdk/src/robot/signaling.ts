@@ -52,6 +52,11 @@ export interface Go2SignalingOptions {
   proxyUrl?: string;
   /** Per-device AES-128 key, 32 hex chars. See `RobotConfig.deviceKey`. */
   deviceKey?: string;
+  /**
+   * Port for the `con_notify` signaling method. Real robots always use 9991
+   * (the default). Set it to reach a mock robot running on another port.
+   */
+  port?: number;
 }
 
 /**
@@ -64,6 +69,7 @@ export interface Go2SignalingOptions {
 export class Go2Signaling {
   private proxyUrl?: string;
   private deviceKey?: string;
+  private port: number;
 
   constructor(
     private robotIp: string,
@@ -71,6 +77,7 @@ export class Go2Signaling {
   ) {
     this.proxyUrl = options.proxyUrl;
     this.deviceKey = options.deviceKey;
+    this.port = options.port ?? 9991;
   }
 
   /**
@@ -93,7 +100,7 @@ export class Go2Signaling {
     let notifyBody: string;
     try {
       const notifyResp = await fetch(
-        `http://${this.robotIp}:9991/con_notify`,
+        `http://${this.robotIp}:${this.port}/con_notify`,
         { method: "POST" },
       );
       notifyBody = await notifyResp.text();
@@ -168,7 +175,7 @@ export class Go2Signaling {
 
     // Step 6: Send encrypted offer
     const connectResp = await fetch(
-      `http://${this.robotIp}:9991/con_ing_${pathEnding}`,
+      `http://${this.robotIp}:${this.port}/con_ing_${pathEnding}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
