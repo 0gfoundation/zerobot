@@ -36,9 +36,6 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules",
-    "src/routes",
-    "src/hooks.server.ts",
-    "src/lib/stores"
+    "node_modules"
   ]
 }
