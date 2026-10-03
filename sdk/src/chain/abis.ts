@@ -68,6 +68,44 @@ export const REGISTRY_ABI = [
         "type": "bytes32"
       },
       {
+        "indexed": true,
+        "internalType": "address",
+        "name": "operator",
+        "type": "address"
+      }
+    ],
+    "name": "OperatorAdded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "robotId",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "operator",
+        "type": "address"
+      }
+    ],
+    "name": "OperatorRemoved",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "robotId",
+        "type": "bytes32"
+      },
+      {
         "indexed": false,
         "internalType": "bool",
         "name": "enabled",
@@ -135,6 +173,24 @@ export const REGISTRY_ABI = [
       }
     ],
     "name": "addController",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "robotId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "address",
+        "name": "operator",
+        "type": "address"
+      }
+    ],
+    "name": "addOperator",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -246,6 +302,30 @@ export const REGISTRY_ABI = [
         "type": "bytes32"
       },
       {
+        "internalType": "address",
+        "name": "caller",
+        "type": "address"
+      }
+    ],
+    "name": "isOperator",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "robotId",
+        "type": "bytes32"
+      },
+      {
         "internalType": "string",
         "name": "name",
         "type": "string"
@@ -280,6 +360,24 @@ export const REGISTRY_ABI = [
       }
     ],
     "name": "removeController",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "robotId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "address",
+        "name": "operator",
+        "type": "address"
+      }
+    ],
+    "name": "removeOperator",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"

@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { formatEther, parseEther } from 'viem';
+import { formatEther, isAddress, parseEther } from 'viem';
 import { useConnection, useWalletClient } from 'wagmi';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Robot } from '@0g-foundation/zerobot-sdk';
 import { Button } from '@0gfoundation/0g-ui/shell';
 import { DirectControl } from '@/components/direct-control';
+import { WalletAddress } from '@/components/wallet-address';
 import { errorMessage, readClient, walletClient } from '@/lib/chain';
 import { LOCAL_MODE } from '@/lib/mode';
 import { menuFor, ROBOT_TYPE_LABELS, robotIdFor } from '@/lib/robots';
@@ -53,6 +54,7 @@ export default function OwnerPage() {
 			await write(walletClient(wallet));
 			addLog(`${label}: done`);
 			await queryClient.invalidateQueries({ queryKey: ['owned-robots'] });
+			await queryClient.invalidateQueries({ queryKey: ['operators'] });
 		} catch (err) {
 			addLog(`${label} failed: ${errorMessage(err)}`);
 		} finally {
@@ -245,6 +247,75 @@ function RobotRow({
 					</Link>
 				</div>
 			)}
+
+			<Operators robotId={r.robotId} busy={busy} run={run} />
+		</div>
+	);
+}
+
+/**
+ * The keys allowed to submit receipts, so the operator node runs on its
+ * own key and the owner's wallet stays in the browser
+ */
+function Operators({
+	robotId,
+	busy,
+	run
+}: {
+	robotId: string;
+	busy: boolean;
+	run: (label: string, write: (client: ReturnType<typeof walletClient>) => Promise<unknown>) => Promise<void>;
+}) {
+	const [address, setAddress] = useState('');
+	const operators = useQuery({
+		queryKey: ['operators', robotId],
+		queryFn: () => readClient().listOperators(robotId)
+	});
+	const valid = isAddress(address.trim());
+
+	return (
+		<div className="mt-3 border-t border-hairline pt-3">
+			<div className="text-xs font-medium uppercase tracking-wider text-ink-muted">Operators</div>
+			{operators.data?.length ? (
+				<ul className="mt-1 space-y-1">
+					{operators.data.map((op) => (
+						<li key={op} className="flex items-center justify-between gap-2 text-sm">
+							<WalletAddress address={op} />
+							<Button
+								size="small"
+								variant="secondary"
+								disabled={busy}
+								onClick={() => run(`Removing operator ${op.slice(0, 10)}…`, (c) => c.removeOperator(robotId, op))}
+							>
+								Remove
+							</Button>
+						</li>
+					))}
+				</ul>
+			) : (
+				<p className="mt-1 text-sm text-ink-muted">
+					{operators.isPending ? 'Loading…' : 'None. Only this wallet can submit receipts.'}
+				</p>
+			)}
+			<div className="mt-2 flex flex-wrap gap-2">
+				<input
+					value={address}
+					onChange={(e) => setAddress(e.target.value)}
+					placeholder="Operator address (0x…)"
+					className={`${input} min-w-64 flex-1 font-mono`}
+				/>
+				<Button
+					size="small"
+					variant="secondary"
+					disabled={busy || !valid}
+					onClick={async () => {
+						await run(`Adding operator ${address.trim().slice(0, 10)}…`, (c) => c.addOperator(robotId, address.trim()));
+						setAddress('');
+					}}
+				>
+					Add operator
+				</Button>
+			</div>
 		</div>
 	);
 }

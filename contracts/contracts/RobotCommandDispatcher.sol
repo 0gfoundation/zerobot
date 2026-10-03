@@ -61,7 +61,10 @@ contract RobotCommandDispatcher is IRobotCommandDispatcher {
         string calldata resultData
     ) external {
         IRobotRegistry.Robot memory robot = registry.getRobot(robotId);
-        require(robot.owner == msg.sender, "Only robot owner can submit receipts");
+        require(
+            robot.owner == msg.sender || registry.isOperator(robotId, msg.sender),
+            "Only robot owner or operator can submit receipts"
+        );
 
         Command storage cmd = _commands[robotId][nonce];
         require(cmd.timestamp > 0, "Command does not exist");

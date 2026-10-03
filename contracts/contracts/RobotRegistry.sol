@@ -6,6 +6,9 @@ import "./interfaces/IRobotRegistry.sol";
 contract RobotRegistry is IRobotRegistry {
     mapping(bytes32 => Robot) private _robots;
     mapping(bytes32 => mapping(address => bool)) private _controllers;
+    // Machines running the robot's operator node: they submit receipts and
+    // nothing else, so the owner's wallet never has to live on one
+    mapping(bytes32 => mapping(address => bool)) private _operators;
     mapping(bytes32 => uint256) private _commandPrices;
 
     modifier onlyOwner(bytes32 robotId) {
@@ -64,6 +67,30 @@ contract RobotRegistry is IRobotRegistry {
     ) external onlyOwner(robotId) {
         _controllers[robotId][controller] = false;
         emit ControllerRemoved(robotId, controller);
+    }
+
+    function addOperator(
+        bytes32 robotId,
+        address operator
+    ) external onlyOwner(robotId) {
+        require(operator != address(0), "Invalid operator");
+        _operators[robotId][operator] = true;
+        emit OperatorAdded(robotId, operator);
+    }
+
+    function removeOperator(
+        bytes32 robotId,
+        address operator
+    ) external onlyOwner(robotId) {
+        _operators[robotId][operator] = false;
+        emit OperatorRemoved(robotId, operator);
+    }
+
+    function isOperator(
+        bytes32 robotId,
+        address caller
+    ) external view returns (bool) {
+        return _operators[robotId][caller];
     }
 
     function setCommandPrice(

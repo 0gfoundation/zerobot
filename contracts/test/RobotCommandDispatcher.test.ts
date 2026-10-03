@@ -253,7 +253,30 @@ describe("RobotCommandDispatcher", function () {
 
       await expect(
         dispatcher.connect(controller).submitReceipt(robotId, 0, true, "ok")
-      ).to.be.revertedWith("Only robot owner can submit receipts");
+      ).to.be.revertedWith("Only robot owner or operator can submit receipts");
+    });
+  });
+
+  describe("Operator receipts", function () {
+    it("should accept a receipt from an operator", async function () {
+      const { registry, dispatcher, other, robotId } = await loadFixture(deployFixture);
+      await dispatcher.dispatchCommand(robotId, 1016, "", "");
+      await registry.addOperator(robotId, other.address);
+
+      await expect(dispatcher.connect(other).submitReceipt(robotId, 0, true, ""))
+        .to.emit(dispatcher, "CommandExecuted")
+        .withArgs(robotId, 0, true, "");
+    });
+
+    it("should refuse a receipt from a removed operator", async function () {
+      const { registry, dispatcher, other, robotId } = await loadFixture(deployFixture);
+      await dispatcher.dispatchCommand(robotId, 1016, "", "");
+      await registry.addOperator(robotId, other.address);
+      await registry.removeOperator(robotId, other.address);
+
+      await expect(
+        dispatcher.connect(other).submitReceipt(robotId, 0, true, "")
+      ).to.be.revertedWith("Only robot owner or operator can submit receipts");
     });
   });
 

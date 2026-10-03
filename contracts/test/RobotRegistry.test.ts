@@ -82,6 +82,38 @@ describe("RobotRegistry", function () {
     });
   });
 
+  describe("Operator Management", function () {
+    it("should add and remove operators", async function () {
+      const { registry, controller, robotId } = await loadFixture(deployFixture);
+      await registry.registerRobot(robotId, "go2-pro-001", "go2_pro", ZERO_ROOT);
+
+      await expect(registry.addOperator(robotId, controller.address))
+        .to.emit(registry, "OperatorAdded")
+        .withArgs(robotId, controller.address);
+      expect(await registry.isOperator(robotId, controller.address)).to.be.true;
+
+      await expect(registry.removeOperator(robotId, controller.address))
+        .to.emit(registry, "OperatorRemoved")
+        .withArgs(robotId, controller.address);
+      expect(await registry.isOperator(robotId, controller.address)).to.be.false;
+    });
+
+    it("should not let an operator dispatch to a private robot", async function () {
+      const { registry, controller, robotId } = await loadFixture(deployFixture);
+      await registry.registerRobot(robotId, "go2-pro-001", "go2_pro", ZERO_ROOT);
+      await registry.addOperator(robotId, controller.address);
+      expect(await registry.isAuthorized(robotId, controller.address)).to.be.false;
+    });
+
+    it("should reject operator changes from non-owner", async function () {
+      const { registry, other, controller, robotId } = await loadFixture(deployFixture);
+      await registry.registerRobot(robotId, "go2-pro-001", "go2_pro", ZERO_ROOT);
+      await expect(
+        registry.connect(other).addOperator(robotId, controller.address)
+      ).to.be.revertedWith("Not robot owner");
+    });
+  });
+
   describe("Authorization", function () {
     it("should authorize owner", async function () {
       const { registry, owner, robotId } = await loadFixture(deployFixture);

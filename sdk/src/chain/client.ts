@@ -112,6 +112,51 @@ export class ChainClient {
   }
 
   /**
+   * Let an address submit receipts for this robot, so an operator node can
+   * run on its own key rather than the owner's. Operators can't dispatch
+   * to a private robot or change its settings. Any number can be added.
+   *
+   * @throws If the caller is not the robot's owner.
+   */
+  async addOperator(
+    robotId: string,
+    operator: string,
+  ): Promise<ContractTransactionReceipt | null> {
+    const tx = await this.registry.addOperator(robotId, operator);
+    return waitForReceipt(tx);
+  }
+
+  /** Revoke an operator's receipt rights at once. Only callable by the owner. */
+  async removeOperator(
+    robotId: string,
+    operator: string,
+  ): Promise<ContractTransactionReceipt | null> {
+    const tx = await this.registry.removeOperator(robotId, operator);
+    return waitForReceipt(tx);
+  }
+
+  async isOperator(robotId: string, address: string): Promise<boolean> {
+    return this.registry.isOperator(robotId, address);
+  }
+
+  /**
+   * The robot's current operators, from the OperatorAdded and
+   * OperatorRemoved logs, checked against `isOperator`.
+   */
+  async listOperators(robotId: string): Promise<string[]> {
+    const added = await this.registry.queryFilter(
+      this.registry.filters.OperatorAdded(robotId),
+    );
+    const candidates = [
+      ...new Set(added.map((e) => (e as ethers.EventLog).args.operator as string)),
+    ];
+    const current = await Promise.all(
+      candidates.map((a) => this.isOperator(robotId, a)),
+    );
+    return candidates.filter((_, i) => current[i]);
+  }
+
+  /**
    * Revoke a controller's dispatch authorization. Only callable by the owner.
    */
   async removeController(
@@ -203,8 +248,8 @@ export class ChainClient {
   /**
    * Submit the execution receipt for a previously-dispatched command.
    * Typically called by the operator node after the robot finishes (or
-   * fails) the command. Only callable by an authorized controller of the
-   * robot.
+   * fails) the command. Only callable by the robot's owner or an operator
+   * (see `addOperator`).
    *
    * @param nonce The nonce of the command being acknowledged.
    * @param resultData Free-form result string (e.g. error message on failure).

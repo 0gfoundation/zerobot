@@ -19,7 +19,23 @@
                                                         submitReceipt() ◄┘
 ```
 
-Two contracts (`RobotRegistry`, `RobotCommandDispatcher`) handle robot identity, owner/controller permissions, the command queue, and payments. The SDK provides everything off-chain.
+Two contracts (`RobotRegistry`, `RobotCommandDispatcher`) handle robot identity, permissions, the command queue, and payments. The SDK provides everything off-chain.
+
+### Roles
+
+Each robot has its own roles. The wallet that registers it is the owner, and the owner adds controllers and operators. The contracts have no admin, so deploying them gives no power over any robot.
+
+| | Owner | Controller | Operator | Anyone |
+|---|:-:|:-:|:-:|:-:|
+| Send commands, paying the robot's price | ✓ | ✓ | if public | if public |
+| Submit receipts | ✓ | | ✓ | |
+| Set price, public access, active | ✓ | | | |
+| Add or remove controllers and operators | ✓ | | | |
+| Withdraw payments | ✓ | | | |
+
+- **Owner** — usually a browser wallet. Registers the robot and manages it from the dashboard.
+- **Controller** — someone allowed to drive a robot that isn't open to the public, such as a teammate or an AI agent.
+- **Operator** — the key `OperatorNode` runs on, next to the robot. It reports what happened to each command, so the owner's wallet never has to live on that machine. Remove one and it stops at once. Run one operator at a time per robot.
 
 ## Try the dashboard
 
@@ -29,7 +45,7 @@ pnpm --filter @0g-foundation/zerobot-sdk build
 pnpm --filter @0g-foundation/zerobot-dashboard dev
 ```
 
-Open `http://localhost:5173`, connect a wallet on the **0G Galileo Testnet**, and register a robot. You can run against a real Go2 Pro on your local network or use the built-in mock (dry-run mode).
+Open `http://localhost:3000`, connect a wallet on the **0G Galileo Testnet**, and register a robot. You can run against a real Go2 Pro on your local network or use the built-in mock (dry-run mode).
 
 ## Build with the SDK
 
@@ -39,8 +55,8 @@ import { Commander, SportCommand } from '@0g-foundation/zerobot-sdk';
 // Accepts a viem WalletClient, an ethers Signer, or a privateKey + rpcUrl.
 const commander = new Commander({
   rpcUrl: 'https://evmrpc-testnet.0g.ai',
-  registryAddress: '0xe7A2A87608f55F2F5ba2fFa63A6F20F1e55E5e14',
-  dispatcherAddress: '0x5f8b7440bcB70D6CEdC2C2767BB1E696d970760d',
+  registryAddress: '0x3B525C6cB41552Edb97DAe3a3f2401cE7723f319',
+  dispatcherAddress: '0x06C3CDe215cE11F3b010FD9e66d80B82B730e95E',
   walletClient,  // from wagmi / viem
 });
 
@@ -64,7 +80,7 @@ Runnable end-to-end scripts in [`examples/`](./examples), including the operator
 For browsing without an IDE. Method semantics — parameter units, throw conditions, wait-or-not contracts — live in JSDoc, surfaced via IntelliSense after `import`.
 
 **`@0g-foundation/zerobot-sdk`** (root)
-- **`ChainClient`** — `registerRobot` · `updateRobot` · `addController` · `removeController` · `setCommandPrice` · `setPublicCommands` · `dispatchCommand` · `dispatchBatch` · `submitReceipt` · `withdrawBalance` · `getRobotNonce` · `getCommand` · `getPendingCommands` · `isAuthorized` · `getRobot` · `getCommandPrice` · `listRobotsByOwner`
+- **`ChainClient`** — `registerRobot` · `updateRobot` · `addController` · `removeController` · `addOperator` · `removeOperator` · `isOperator` · `listOperators` · `setCommandPrice` · `setPublicCommands` · `dispatchCommand` · `dispatchBatch` · `submitReceipt` · `withdrawBalance` · `getRobotNonce` · `getCommand` · `getPendingCommands` · `isAuthorized` · `getRobot` · `getCommandPrice` · `listRobotsByOwner`
 - **`Commander`** — `sendCommand` · `sendBatch`
 - **`ChainListener`** — `start` · `stop`; events: `command`, `error`
 - **`AIBroker`** — `initialize` · `resolvePrompt`
