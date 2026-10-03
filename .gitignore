@@ -12,3 +12,5 @@ coverage/
 .next/
 next-env.d.ts
 apps/dashboard/public/recordings/
+.vercel
+.env*
