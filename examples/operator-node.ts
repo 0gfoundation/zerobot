@@ -15,15 +15,15 @@ const {
   ROBOT_IP = "192.168.123.18",
   ROBOT_DEVICE_KEY,
   RPC_URL = "https://evmrpc-testnet.0g.ai",
-  PRIVATE_KEY,
+  OPERATOR_PRIVATE_KEY,
   REGISTRY_ADDRESS,
   DISPATCHER_ADDRESS,
   ROBOT_ID,
 } = process.env;
 
-if (!PRIVATE_KEY || !REGISTRY_ADDRESS || !DISPATCHER_ADDRESS || !ROBOT_ID) {
+if (!OPERATOR_PRIVATE_KEY || !REGISTRY_ADDRESS || !DISPATCHER_ADDRESS || !ROBOT_ID) {
   console.error(
-    "Missing env vars: PRIVATE_KEY, REGISTRY_ADDRESS, DISPATCHER_ADDRESS, ROBOT_ID",
+    "Missing env vars: OPERATOR_PRIVATE_KEY, REGISTRY_ADDRESS, DISPATCHER_ADDRESS, ROBOT_ID",
   );
   process.exit(1);
 }
@@ -32,7 +32,7 @@ const chainConfig = {
   rpcUrl: RPC_URL,
   registryAddress: REGISTRY_ADDRESS!,
   dispatcherAddress: DISPATCHER_ADDRESS!,
-  privateKey: PRIVATE_KEY,
+  privateKey: OPERATOR_PRIVATE_KEY,
   // Galileo makes a block about every 0.5s, so poll at that rate
   pollingIntervalMs: 500,
 };

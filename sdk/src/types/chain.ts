@@ -47,6 +47,21 @@ export interface OnChainCommand {
   status: CommandStatus;
 }
 
+/**
+ * Owner settings to apply in one transaction (the registry's `multicall`).
+ * Unset fields are left as they are.
+ */
+export interface RobotSettings {
+  /** Price per command in wei */
+  price?: bigint;
+  publicCommands?: boolean;
+  active?: boolean;
+  addOperators?: string[];
+  removeOperators?: string[];
+  addControllers?: string[];
+  removeControllers?: string[];
+}
+
 /** Options for dispatching commands on-chain. */
 export interface DispatchOptions {
   /**

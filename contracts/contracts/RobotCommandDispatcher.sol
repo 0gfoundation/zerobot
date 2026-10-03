@@ -1,11 +1,26 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import "./interfaces/IRobotCommandDispatcher.sol";
 import "./interfaces/IRobotRegistry.sol";
 
-contract RobotCommandDispatcher is IRobotCommandDispatcher {
-    IRobotRegistry public immutable registry;
+/// Deployed behind a UUPS proxy. This contract's own `owner()` is the
+/// upgrade admin, unrelated to each robot's owner. It can be handed to a
+/// timelock run by a multisig later with `transferOwnership`, which the new
+/// owner accepts with `acceptOwnership` (Ownable2Step).
+///
+/// No multicall here: calls carry payments, and a delegatecall loop would
+/// let one payment count for several commands.
+contract RobotCommandDispatcher is
+    IRobotCommandDispatcher,
+    Initializable,
+    UUPSUpgradeable,
+    Ownable2StepUpgradeable
+{
+    IRobotRegistry public registry;
 
     mapping(bytes32 => uint256) private _robotNonce;
     mapping(bytes32 => mapping(uint256 => Command)) private _commands;
@@ -14,9 +29,18 @@ contract RobotCommandDispatcher is IRobotCommandDispatcher {
     uint256 public constant COMMAND_EXPIRY = 5 minutes;
     uint256 public constant MAX_NOTE_LENGTH = 64;
 
-    constructor(address registryAddress) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(address registryAddress, address upgradeAdmin) external initializer {
+        __Ownable_init(upgradeAdmin);
+        __Ownable2Step_init();
         registry = IRobotRegistry(registryAddress);
     }
+
+    function _authorizeUpgrade(address) internal override onlyOwner {}
 
     function dispatchCommand(
         bytes32 robotId,

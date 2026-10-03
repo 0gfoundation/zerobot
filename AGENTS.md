@@ -41,7 +41,8 @@ pnpm test:watch         # vitest watch
 cd contracts
 pnpm compile            # hardhat compile
 pnpm test               # hardhat test
-pnpm deploy:testnet     # hardhat run scripts/deploy.ts --network galileo
+pnpm deploy:testnet     # deploy both contracts behind new UUPS proxies
+pnpm upgrade:testnet    # upgrade the proxies in .env to the compiled code (upgrade admin only)
 
 # Dashboard
 cd apps/dashboard
@@ -100,8 +101,10 @@ The SDK exposes four entry points (see `exports` in `sdk/package.json`), split a
 
 ### Smart Contracts
 
-- **RobotRegistry** — Robot identity, owner/controller/operator permissions (table in `README.md`), command pricing. `msg.sender` becomes owner on registration (permissionless, no admin). `setPublicCommands` lets anyone dispatch to a robot, still paying its command price.
+- **RobotRegistry** — Robot identity, owner/controller/operator permissions (table in `README.md`), command pricing. `msg.sender` becomes owner on registration (permissionless). `multicall` batches an owner's calls, e.g. register plus settings, into one transaction. `setPublicCommands` lets anyone dispatch to a robot, still paying its command price.
 - **RobotCommandDispatcher** — Command queue with monotonic nonces, 5-minute expiry, payment enforcement, execution receipts. References Registry for authorization. Each command carries a free-text `note` (max 64 bytes), e.g. the sender's name. The nonce is the queue order.
+
+- **Upgrades** — Both contracts are UUPS proxies (OpenZeppelin upgradeable, `Ownable2Step`). The addresses below are the proxies and never change. Upgrade with `pnpm upgrade:testnet` from the upgrade admin (`DEPLOYER_PRIVATE_KEY`). Rules for upgradeable code: keep `initialize` in place of a constructor, only append new state variables after the existing ones, and commit `contracts/.openzeppelin/`, the plugin's record of each deployment's storage layout, which it checks every upgrade against. To move to a multisig and timelock: deploy a `TimelockController` with the Safe as proposer, then `transferOwnership(timelock)` on both proxies, and accept it through the timelock.
 
 ## Robot Compatibility
 
@@ -141,6 +144,6 @@ G1 uses `LocoClient` (not `SportClient`) with different API IDs and topics (`rt/
 
 ## Deployed Contracts (Galileo Testnet)
 
-- Registry: `0x3B525C6cB41552Edb97DAe3a3f2401cE7723f319`
-- Dispatcher: `0x06C3CDe215cE11F3b010FD9e66d80B82B730e95E`
+- Registry: `0x291162e93D7A80Eb8F738882a28a7a8A5FBA73bb`
+- Dispatcher: `0x418bA7C231dac8Ef58b534BeE6adC50E703AA753`
 - Chain ID: 16602, RPC: `https://evmrpc-testnet.0g.ai`

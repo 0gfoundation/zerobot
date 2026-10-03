@@ -23,7 +23,7 @@ Two contracts (`RobotRegistry`, `RobotCommandDispatcher`) handle robot identity,
 
 ### Roles
 
-Each robot has its own roles. The wallet that registers it is the owner, and the owner adds controllers and operators. The contracts have no admin, so deploying them gives no power over any robot.
+Each robot has its own roles. The wallet that registers it is the owner, and the owner adds controllers and operators. Both contracts sit behind upgradeable proxies. Their upgrade admin, the deployer for now and later a timelock run by a multisig, can change the contract code but has no role on any robot. Owner settings can be batched into one transaction with the registry's `multicall`.
 
 | | Owner | Controller | Operator | Anyone |
 |---|:-:|:-:|:-:|:-:|
@@ -55,8 +55,8 @@ import { Commander, SportCommand } from '@0g-foundation/zerobot-sdk';
 // Accepts a viem WalletClient, an ethers Signer, or a privateKey + rpcUrl.
 const commander = new Commander({
   rpcUrl: 'https://evmrpc-testnet.0g.ai',
-  registryAddress: '0x3B525C6cB41552Edb97DAe3a3f2401cE7723f319',
-  dispatcherAddress: '0x06C3CDe215cE11F3b010FD9e66d80B82B730e95E',
+  registryAddress: '0x291162e93D7A80Eb8F738882a28a7a8A5FBA73bb',
+  dispatcherAddress: '0x418bA7C231dac8Ef58b534BeE6adC50E703AA753',
   walletClient,  // from wagmi / viem
 });
 

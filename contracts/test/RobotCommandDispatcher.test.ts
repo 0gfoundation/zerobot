@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 
 describe("RobotCommandDispatcher", function () {
@@ -7,12 +7,16 @@ describe("RobotCommandDispatcher", function () {
     const [owner, controller, other] = await ethers.getSigners();
 
     const Registry = await ethers.getContractFactory("RobotRegistry");
-    const registry = await Registry.deploy();
+    const registry = await upgrades.deployProxy(Registry, [owner.address], { kind: "uups" });
 
     const Dispatcher = await ethers.getContractFactory(
       "RobotCommandDispatcher"
     );
-    const dispatcher = await Dispatcher.deploy(await registry.getAddress());
+    const dispatcher = await upgrades.deployProxy(
+      Dispatcher,
+      [await registry.getAddress(), owner.address],
+      { kind: "uups" }
+    );
 
     const robotId = ethers.keccak256(ethers.toUtf8Bytes("go2-pro-001"));
 
@@ -277,6 +281,39 @@ describe("RobotCommandDispatcher", function () {
       await expect(
         dispatcher.connect(other).submitReceipt(robotId, 0, true, "")
       ).to.be.revertedWith("Only robot owner or operator can submit receipts");
+    });
+  });
+
+  describe("Upgrades", function () {
+    it("should keep commands and balances across an upgrade", async function () {
+      const { registry, dispatcher, controller, robotId } = await loadFixture(deployFixture);
+      const price = ethers.parseEther("0.01");
+      await registry.setCommandPrice(robotId, price);
+      await dispatcher.connect(controller).dispatchCommand(robotId, 1016, "", "Ada", { value: price });
+
+      const Dispatcher = await ethers.getContractFactory("RobotCommandDispatcher");
+      const upgraded = await upgrades.upgradeProxy(await dispatcher.getAddress(), Dispatcher);
+
+      expect(await upgraded.registry()).to.equal(await registry.getAddress());
+      expect((await upgraded.getCommand(robotId, 0)).note).to.equal("Ada");
+      expect(await upgraded.getRobotNonce(robotId)).to.equal(1);
+      expect(await ethers.provider.getBalance(await dispatcher.getAddress())).to.equal(price);
+    });
+
+    it("should only let the upgrade admin upgrade", async function () {
+      const { dispatcher, other } = await loadFixture(deployFixture);
+      const Dispatcher = await ethers.getContractFactory("RobotCommandDispatcher");
+      const implementation = await Dispatcher.deploy();
+      await expect(
+        dispatcher.connect(other).upgradeToAndCall(await implementation.getAddress(), "0x")
+      ).to.be.revertedWithCustomError(dispatcher, "OwnableUnauthorizedAccount");
+    });
+
+    it("should not initialize twice", async function () {
+      const { dispatcher, other } = await loadFixture(deployFixture);
+      await expect(
+        dispatcher.initialize(other.address, other.address)
+      ).to.be.revertedWithCustomError(dispatcher, "InvalidInitialization");
     });
   });
 

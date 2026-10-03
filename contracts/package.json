@@ -5,15 +5,19 @@
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
-    "deploy:testnet": "hardhat run scripts/deploy.ts --network galileo"
+    "deploy:testnet": "hardhat run scripts/deploy.ts --network galileo",
+    "upgrade:testnet": "hardhat run scripts/upgrade.ts --network galileo"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/hardhat-upgrades": "^3.9.1",
     "chai": "^4.5.0",
     "hardhat": "^2.22.0",
     "typescript": "^5.7.0"
   },
   "dependencies": {
+    "@openzeppelin/contracts": "^5.6.1",
+    "@openzeppelin/contracts-upgradeable": "^5.6.1",
     "dotenv": "^16.6.1"
   }
 }

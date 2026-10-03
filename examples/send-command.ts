@@ -16,15 +16,15 @@ const COMMAND_NAME_MAP = new Map(GO2_SPORT_SCHEMAS.map((s) => [s.name, s]));
 
 const {
   RPC_URL = "https://evmrpc-testnet.0g.ai",
-  PRIVATE_KEY,
+  SENDER_PRIVATE_KEY,
   REGISTRY_ADDRESS,
   DISPATCHER_ADDRESS,
   ROBOT_ID,
 } = process.env;
 
-if (!PRIVATE_KEY || !REGISTRY_ADDRESS || !DISPATCHER_ADDRESS || !ROBOT_ID) {
+if (!SENDER_PRIVATE_KEY || !REGISTRY_ADDRESS || !DISPATCHER_ADDRESS || !ROBOT_ID) {
   console.error(
-    "Missing env vars: PRIVATE_KEY, REGISTRY_ADDRESS, DISPATCHER_ADDRESS, ROBOT_ID",
+    "Missing env vars: SENDER_PRIVATE_KEY, REGISTRY_ADDRESS, DISPATCHER_ADDRESS, ROBOT_ID",
   );
   process.exit(1);
 }
@@ -52,7 +52,7 @@ async function main(): Promise<void> {
     rpcUrl: RPC_URL,
     registryAddress: REGISTRY_ADDRESS!,
     dispatcherAddress: DISPATCHER_ADDRESS!,
-    privateKey: PRIVATE_KEY,
+    privateKey: SENDER_PRIVATE_KEY,
   });
 
   const params = paramsJson ? JSON.parse(paramsJson) : undefined;

@@ -5,6 +5,7 @@ import type {
   DispatchOptions,
   OnChainCommand,
   Robot,
+  RobotSettings,
 } from "../types/chain.js";
 import type { CommandPayload } from "../types/commands.js";
 import { REGISTRY_ABI, DISPATCHER_ABI } from "./abis.js";
@@ -56,8 +57,9 @@ export class ChainClient {
 
   /**
    * Register a new robot. `msg.sender` becomes the owner — registration is
-   * permissionless and has no admin override, so the wallet that sends this
-   * transaction is the only address that can later update or transfer it.
+   * permissionless, so the wallet that sends this transaction is the only
+   * address that can later update it. With `settings`, the robot is also
+   * configured in the same transaction (see `configureRobot`).
    *
    * @param robotId 32-byte hex identifier (e.g. `keccak256(toBytes(name))`).
    *   Must be unique across the registry.
@@ -70,14 +72,70 @@ export class ChainClient {
     name: string,
     robotType: string,
     storageRoot: string,
+    settings: RobotSettings = {},
   ): Promise<ContractTransactionReceipt | null> {
-    const tx = await this.registry.registerRobot(
-      robotId,
-      name,
-      robotType,
-      storageRoot,
+    const register = this.registry.interface.encodeFunctionData(
+      "registerRobot",
+      [robotId, name, robotType, storageRoot],
     );
+    const calls = [
+      register,
+      ...this.settingsCalls(robotId, settings, storageRoot),
+    ];
+    const tx =
+      calls.length === 1
+        ? await this.registry.registerRobot(
+            robotId,
+            name,
+            robotType,
+            storageRoot,
+          )
+        : await this.registry.multicall(calls);
     return waitForReceipt(tx);
+  }
+
+  /**
+   * Apply any mix of owner settings in one transaction, through the
+   * registry's `multicall`. Each call runs as the sender, so the whole
+   * transaction reverts unless the sender owns the robot.
+   *
+   * @throws If nothing is set, or the caller is not the robot's owner.
+   */
+  async configureRobot(
+    robotId: string,
+    settings: RobotSettings,
+  ): Promise<ContractTransactionReceipt | null> {
+    // updateRobot sets the storage root along with `active`, so keep it
+    const storageRoot =
+      settings.active === undefined
+        ? undefined
+        : (await this.getRobot(robotId)).storageRoot;
+    const calls = this.settingsCalls(robotId, settings, storageRoot);
+    if (calls.length === 0) throw new Error("configureRobot: no settings given");
+    const tx = await this.registry.multicall(calls);
+    return waitForReceipt(tx);
+  }
+
+  private settingsCalls(
+    robotId: string,
+    settings: RobotSettings,
+    storageRoot: string | undefined,
+  ): string[] {
+    const encode = (fn: string, args: unknown[]) =>
+      this.registry.interface.encodeFunctionData(fn, [robotId, ...args]);
+    const calls: string[] = [];
+    if (settings.price !== undefined) calls.push(encode("setCommandPrice", [settings.price]));
+    if (settings.publicCommands !== undefined) {
+      calls.push(encode("setPublicCommands", [settings.publicCommands]));
+    }
+    if (settings.active !== undefined) {
+      calls.push(encode("updateRobot", [storageRoot, settings.active]));
+    }
+    for (const a of settings.addOperators ?? []) calls.push(encode("addOperator", [a]));
+    for (const a of settings.removeOperators ?? []) calls.push(encode("removeOperator", [a]));
+    for (const a of settings.addControllers ?? []) calls.push(encode("addController", [a]));
+    for (const a of settings.removeControllers ?? []) calls.push(encode("removeController", [a]));
+    return calls;
   }
 
   /**
