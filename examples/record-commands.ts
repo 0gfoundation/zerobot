@@ -60,11 +60,13 @@ const COMMANDS_FILTER = getArg("commands", "all");
 const REPEAT = parseInt(getArg("repeat", "1"));
 const CONFIRM = !args.includes("--yes");
 const RESET_MODE = getArg("reset", "stand");
+const MOVE_DURATION = parseInt(getArg("move-ms", "3000"));
 
 if (
   !ROBOT_TYPE ||
   !["go2", "g1"].includes(ROBOT_TYPE) ||
   !(REPEAT >= 1) ||
+  !(MOVE_DURATION > 0) ||
   !["stand", "lie"].includes(RESET_MODE) ||
   (RESET_MODE === "lie" && ROBOT_TYPE !== "go2")
 ) {
@@ -77,6 +79,7 @@ if (
   console.log("  --yes                   Don't wait for Enter before each run");
   console.log("  --reset <stand|lie>     Before each run: recovery stand, or (Go2 only) lie down and stand up");
   console.log("                          for a consistent starting stance, ~3s slower (default: stand)");
+  console.log("  --move-ms <ms>          How long movement commands (Move*, Rotate*) run (default: 3000)");
   console.log("  --settle <ms>           Wait time before each command (default: 2000)");
   console.log("  --extra <ms>            Extra recording time after command (default: 1500)");
   process.exit(1);
@@ -96,7 +99,6 @@ interface RobotCommand {
 }
 
 const MOVE_SPEED = 0.3;
-const MOVE_DURATION = 3000;
 const ROTATE_SPEED = 1.0;
 
 /** Go2 Pro movement commands — continuous velocity commands */
