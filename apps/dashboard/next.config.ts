@@ -13,7 +13,9 @@ const config: NextConfig = {
 	turbopack: { root: path.resolve(import.meta.dirname, '../..') },
 	// The SDK's robot and mock entries load @roamhq/wrtc at runtime in Node.
 	// Bundling them would break that lookup, so the server requires them.
-	serverExternalPackages: ['@0g-foundation/zerobot-sdk', '@roamhq/wrtc']
+	serverExternalPackages: ['@0g-foundation/zerobot-sdk', '@roamhq/wrtc'],
+	// The owner's robot list is the home page for now
+	redirects: async () => [{ source: '/', destination: '/robots', permanent: false }]
 };
 
 export default config;

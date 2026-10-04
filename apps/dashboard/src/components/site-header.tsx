@@ -14,7 +14,7 @@ import { LOCAL_MODE } from '@/lib/mode';
 import { WalletControls } from './wallet-controls';
 
 const ITEMS: ShellLinkItem[] = [
-	{ href: '/', label: 'My robots' },
+	{ href: '/robots', label: 'My robots' },
 	...(LOCAL_MODE ? [{ href: '/recordings', label: 'Recordings' }] : []),
 	{ href: 'https://faucet.0g.ai', label: 'Faucet', external: true }
 ];
@@ -33,7 +33,7 @@ function NextLink({ href, ...props }: ShellLinkProps) {
 function Lockup() {
 	return (
 		<Link
-			href="/"
+			href="/robots"
 			aria-label="Zerobot"
 			className="flex shrink-0 items-center gap-2 rounded-[4px] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 md:gap-3"
 		>
