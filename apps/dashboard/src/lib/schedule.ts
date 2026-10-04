@@ -81,10 +81,20 @@ function afterHolds(t: number, holds: Hold[]): number {
  * up for RiseSit.
  */
 export function recordingTime(slot: Slot, elapsed: number): number {
-	const duration = slot.schema.estimatedDurationMs;
-	if (!slot.exit) return elapsed;
+	return playbackTime(slot.schema, slot.exit, elapsed);
+}
+
+/** `recordingTime` for a move and its exit move, outside a slot, e.g. on the recordings page */
+export function playbackTime(schema: CommandSchema, exit: CommandSchema | undefined, elapsed: number): number {
+	const duration = schema.estimatedDurationMs;
+	if (!exit) return elapsed;
 	const exitStart = duration + SETTLE_MS;
 	if (elapsed < exitStart) return Math.min(elapsed, duration);
-	const progress = Math.min(1, (elapsed - exitStart) / slot.exit.estimatedDurationMs);
+	const progress = Math.min(1, (elapsed - exitStart) / exit.estimatedDurationMs);
 	return duration * (1 - progress);
+}
+
+/** How long a move takes on the stage, its exit move included */
+export function playedDuration(schema: CommandSchema, exit: CommandSchema | undefined): number {
+	return schema.estimatedDurationMs + (exit ? SETTLE_MS + exit.estimatedDurationMs : 0);
 }
