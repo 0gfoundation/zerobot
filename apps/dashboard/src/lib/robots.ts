@@ -42,7 +42,7 @@ export function robotFamily(robotType: string): 'go2' | 'g1' {
  * posed by the move's recording. A move without one shows its emoji.
  */
 const POSE_IMAGES: Record<'go2' | 'g1', ReadonlySet<string>> = {
-	go2: new Set(['hello', 'sit', 'stretch']),
+	go2: new Set(['hello', 'sit', 'standdown', 'stretch', 'fingerheart', 'content', 'dance1', 'dance2']),
 	g1: new Set()
 };
 
