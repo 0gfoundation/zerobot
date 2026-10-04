@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@0gfoundation/0g-ui/shell';
 import { RobotViewer } from './robot-viewer';
 import { useRobotConnection } from '@/lib/use-robot-connection';
@@ -68,6 +68,24 @@ export function DirectControl({
 	const [mode, setMode] = useState<'robot' | 'dryrun'>('robot');
 	const [ip, setIp] = useState('192.168.123.18');
 	const [deviceKey, setDeviceKey] = useState('');
+	// Fields typed in before the local config arrives win over it
+	const edited = useRef({ ip: false, deviceKey: false });
+
+	// Pre-fill from the local server, which reads ROBOT_IP and ROBOT_DEVICE_KEY from the repo's .env
+	useEffect(() => {
+		let cancelled = false;
+		fetch('/api/robot-config')
+			.then((res) => (res.ok ? res.json() : {}))
+			.then((config: { ip?: string; deviceKey?: string }) => {
+				if (cancelled) return;
+				if (config.ip && !edited.current.ip) setIp(config.ip);
+				if (config.deviceKey && !edited.current.deviceKey) setDeviceKey(config.deviceKey);
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
 	const [speed, setSpeed] = useState(0.3);
 	const isG1 = robotType === 'g1';
 
@@ -125,7 +143,10 @@ export function DirectControl({
 							<div className="flex flex-wrap items-end gap-3">
 								<label className="min-w-40 flex-1 text-xs text-ink-muted">
 									Robot IP (local network)
-									<input value={ip} onChange={(e) => setIp(e.target.value)} className={`${input} mt-1`} />
+									<input value={ip} onChange={(e) => {
+											edited.current.ip = true;
+											setIp(e.target.value);
+										}} className={`${input} mt-1`} />
 								</label>
 								<label className="min-w-40 flex-1 text-xs text-ink-muted">
 									Device key (Go2 firmware 1.1.15+)
@@ -134,7 +155,10 @@ export function DirectControl({
 										autoComplete="off"
 										placeholder="32 hex characters"
 										value={deviceKey}
-										onChange={(e) => setDeviceKey(e.target.value)}
+										onChange={(e) => {
+											edited.current.deviceKey = true;
+											setDeviceKey(e.target.value);
+										}}
 										className={`${input} mt-1`}
 									/>
 								</label>
