@@ -6,12 +6,13 @@ import { useBalance, useConnection, useSwitchChain, useWalletClient } from 'wagm
 import { CommandStatus, type ResolvedMenuItem } from '@0g-foundation/zerobot-sdk';
 import { Button, ButtonLink } from '@0gfoundation/0g-ui/shell';
 import { WalletControls } from '@/components/wallet-controls';
+import { Notice } from '@/components/notice';
 import { WalletAddress } from '@/components/wallet-address';
 import { errorMessage, readClient, walletClient } from '@/lib/chain';
 import { defaultNetwork } from '@/lib/networks';
 import { useQueue } from '@/lib/use-queue';
 import { useRobot } from '@/lib/use-robot';
-import { useRobotStatus } from '@/lib/use-robot-status';
+import { useRobotStatus, type LiveStatus } from '@/lib/use-robot-status';
 
 const MAX_NOTE_BYTES = 64;
 /** Headroom over the price for gas, so the transaction doesn't fail on fees */
@@ -94,6 +95,8 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 				screen while {displayName} does it.
 			</p>
 
+			<Availability displayName={displayName} status={status.data} className="mt-4" />
+
 			{submission && !submission.error ? (
 				<Status
 					displayName={displayName}
@@ -167,11 +170,10 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 						</div>
 					</Step>
 
-					{submission?.error && <p className="mt-4 text-sm text-danger">{submission.error}</p>}
-					{status.data && !available && (
-						<p className="mt-4 text-sm text-warning" role="status">
-							{displayName} isn&apos;t taking moves right now. Check back in a minute.
-						</p>
+					{submission?.error && (
+						<Notice tone="danger" title="That payment didn’t go through" className="mt-6">
+							{submission.error}
+						</Notice>
 					)}
 
 					<div className="mt-6">
@@ -188,7 +190,13 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 								noteBytes > MAX_NOTE_BYTES
 							}
 						>
-							Pay {formatEther(data.price)} 0G
+							{!status.data
+								? `Checking ${displayName}…`
+								: available
+									? `Pay ${formatEther(data.price)} 0G`
+									: status.data.operatorOnline
+										? `${displayName} is reconnecting…`
+										: `${displayName} is offline`}
 						</Button>
 					</div>
 				</>
@@ -208,6 +216,42 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 				</section>
 			)}
 		</div>
+	);
+}
+
+/** Whether the robot can take a move right now, shown before anyone starts */
+function Availability({
+	displayName,
+	status,
+	className
+}: {
+	displayName: string;
+	status: LiveStatus | undefined;
+	className?: string;
+}) {
+	if (!status) return null;
+	if (status.robotOnline) {
+		const battery = status.battery === undefined ? '' : ` · battery ${status.battery}%`;
+		return (
+			<p className={`flex items-center gap-2 text-sm text-ink-soft ${className}`}>
+				<span aria-hidden className="size-2 rounded-full bg-success" />
+				{displayName} is online{battery}
+			</p>
+		);
+	}
+	if (status.operatorOnline) {
+		return (
+			<Notice tone="warning" title={`${displayName} is reconnecting`} className={className}>
+				{displayName} lost its connection and is coming back. Moves are paused until then, so you
+				can&apos;t pay yet. This page updates by itself.
+			</Notice>
+		);
+	}
+	return (
+		<Notice tone="warning" title={`${displayName} is offline`} className={className}>
+			{displayName} isn&apos;t taking moves right now. You can still connect your wallet and get testnet 0G
+			while you wait. This page updates by itself.
+		</Notice>
 	);
 }
 
