@@ -12,6 +12,7 @@ import { sessionChains, type SessionChains } from '@/lib/session-chains';
 const NO_ANSWER_MS = 20_000;
 
 const chain = defaultNetwork.chain;
+const recommended = defaultNetwork.metaMaskOnly ? 'MetaMask' : null;
 
 /**
  * Moves the wallet onto the network the dashboard uses. A WalletConnect
@@ -54,7 +55,7 @@ export function SwitchNetwork() {
 				<p>
 					When it connected, {wallet} didn&apos;t include {chain.name}, and it won&apos;t switch to a network it
 					left out. Adding the network in the wallet doesn&apos;t change that. Connect with a wallet that supports{' '}
-					{chain.name} instead. MetaMask does.
+					{chain.name} instead{recommended ? `, such as ${recommended}` : ''}.
 				</p>
 				<UseAnotherWallet />
 			</Notice>
@@ -94,7 +95,7 @@ export function SwitchNetwork() {
 						<Detail label="Symbol" value={chain.nativeCurrency.symbol} />
 						{chain.blockExplorers && <Detail label="Explorer" value={chain.blockExplorers.default.url} />}
 					</dl>
-					<p className="mt-3">Or use another wallet. MetaMask adds networks reliably.</p>
+					<p className="mt-3">Or use another wallet{recommended ? `, such as ${recommended}` : ''}.</p>
 					<UseAnotherWallet />
 				</Notice>
 			)}

@@ -12,6 +12,7 @@ import {
 	type Timeline
 } from '@0g-foundation/zerobot-sdk';
 import { RobotViewer, type RobotViewerHandle } from '@/components/robot-viewer';
+import { defaultNetwork } from '@/lib/networks';
 import { robotFamily } from '@/lib/robots';
 import { recordingTime, schedule, type Hold, type Slot } from '@/lib/schedule';
 import { useQueue } from '@/lib/use-queue';
@@ -200,6 +201,7 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 						</figure>
 						<p className="mt-4 text-2xl font-semibold">Scan to make {data.displayName} move</p>
 						<p className="mt-1 text-ink-muted">{formatEther(data.price)} testnet 0G per move</p>
+						{defaultNetwork.metaMaskOnly && <p className="mt-1 text-ink-muted">Pay with MetaMask</p>}
 					</>
 				) : (
 					// Paused payments hide the QR, so nobody scans into a page that can't take them
