@@ -11,6 +11,7 @@ import {
 	type Timeline
 } from '@0g-foundation/zerobot-sdk';
 import { BrandQr } from '@/components/brand-qr';
+import { MoveIcon } from '@/components/move-icon';
 import { RobotViewer, type RobotViewerHandle } from '@/components/robot-viewer';
 import { METAMASK } from '@/components/wallet/wallets';
 import { ZeroGMark } from '@/components/zero-g-mark';
@@ -271,8 +272,8 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 									</span>
 									Now playing
 								</p>
-								<p className="mt-3 text-5xl leading-tight font-semibold">
-									{currentMove?.label} {currentMove?.emoji}
+								<p className="mt-3 flex items-center gap-4 text-5xl leading-tight font-semibold">
+									{currentMove?.label} <MoveIcon robotType={data.robot.robotType} move={currentMove} />
 								</p>
 								<p className="mt-2 truncate text-2xl text-ink-muted">
 									for <span className="font-medium text-ink">{nowPlaying.name}</span>
@@ -302,8 +303,8 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 										✓
 									</span>
 									<span className="max-w-[12rem] truncate font-medium">{e.command.note || 'Anonymous'}</span>
-									<span className="text-ink-muted">
-										{move?.label} {move?.emoji}
+									<span className="flex items-center gap-2 text-ink-muted">
+										{move?.label} <MoveIcon robotType={data.robot.robotType} move={move} />
 									</span>
 								</span>
 							);
@@ -379,8 +380,8 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 									{i + 1}
 								</span>
 								<span className="min-w-0 flex-1 truncate font-medium">{e.name}</span>
-								<span className="shrink-0 text-ink-muted">
-									{move?.label} {move?.emoji}
+								<span className="flex shrink-0 items-center gap-2 text-ink-muted">
+									{move?.label} <MoveIcon robotType={data.robot.robotType} move={move} />
 								</span>
 							</li>
 						);

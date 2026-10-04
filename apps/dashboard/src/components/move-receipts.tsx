@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '@0gfoundation/0g-ui/shell';
 import { defaultNetwork } from '@/lib/networks';
 import type { MoveReceipt, ReceiptView, Tone } from '@/lib/move-receipts';
@@ -17,7 +17,8 @@ const DOT: Record<Tone, string> = {
 export interface ReceiptCard {
 	receipt: MoveReceipt;
 	view: ReceiptView;
-	emoji?: string;
+	/** The move's picture, after its label */
+	icon?: ReactNode;
 	label: string;
 }
 
@@ -65,7 +66,7 @@ export function MoveReceipts({
 
 	return (
 		<section className="mt-6 flex flex-col gap-2" aria-label="Your moves">
-			{cards.map(({ receipt, view, emoji, label }) => {
+			{cards.map(({ receipt, view, icon, label }) => {
 				const isOpen = receipt.id === openId;
 				return (
 					<div key={receipt.id} className="rounded-2xl border border-hairline">
@@ -76,8 +77,8 @@ export function MoveReceipts({
 							className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left"
 						>
 							<span aria-hidden className={`size-2 shrink-0 rounded-full ${DOT[view.tone]}`} />
-							<span className="min-w-0 flex-1 truncate font-medium">
-								{label} {emoji}
+							<span className="flex min-w-0 flex-1 items-center gap-2 font-medium">
+								<span className="truncate">{label}</span> {icon}
 							</span>
 							<span className="shrink-0 text-sm text-ink-soft">{view.status}</span>
 							<span aria-hidden className={`shrink-0 text-ink-muted transition ${isOpen ? 'rotate-180' : ''}`}>

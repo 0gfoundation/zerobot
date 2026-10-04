@@ -6,6 +6,7 @@ import { useConnection, useWalletClient } from 'wagmi';
 import { useQuery } from '@tanstack/react-query';
 import { CommandStatus } from '@0g-foundation/zerobot-sdk';
 import { Button } from '@0gfoundation/0g-ui/shell';
+import { MoveIcon } from '@/components/move-icon';
 import { SwitchNetwork } from '@/components/switch-network';
 import { WalletAddress } from '@/components/wallet-address';
 import { errorMessage, readClient, walletClient } from '@/lib/chain';
@@ -182,7 +183,7 @@ export default function ConsolePage({ params }: { params: Promise<{ name: string
 				{pending.length === 0 ? (
 					<p className="text-sm text-ink-muted">Nothing queued.</p>
 				) : (
-					<CommandTable entries={pending} menu={data.menu} now={now} firstLabel={s?.robotOnline && !paused ? 'Now' : undefined} />
+					<CommandTable entries={pending} menu={data.menu} robotType={data.robot.robotType} now={now} firstLabel={s?.robotOnline && !paused ? 'Now' : undefined} />
 				)}
 				{queueError && <p className="mt-2 text-sm text-danger">Chain: {queueError}</p>}
 			</section>
@@ -192,7 +193,7 @@ export default function ConsolePage({ params }: { params: Promise<{ name: string
 				{finished.length === 0 ? (
 					<p className="text-sm text-ink-muted">Nothing yet.</p>
 				) : (
-					<CommandTable entries={finished} menu={data.menu} now={now} />
+					<CommandTable entries={finished} menu={data.menu} robotType={data.robot.robotType} now={now} />
 				)}
 			</section>
 		</div>
@@ -202,11 +203,13 @@ export default function ConsolePage({ params }: { params: Promise<{ name: string
 function CommandTable({
 	entries,
 	menu,
+	robotType,
 	now,
 	firstLabel
 }: {
 	entries: QueueEntry[];
-	menu: { apiId: number; emoji?: string; label: string }[];
+	menu: { apiId: number; command: string; emoji?: string; label: string }[];
+	robotType: string;
 	now: number;
 	/** Shown in place of the first row's position */
 	firstLabel?: string;
@@ -235,7 +238,13 @@ function CommandTable({
 								</td>
 								<td className="max-w-40 truncate py-1.5 pr-3">{e.command.note || 'Anonymous'}</td>
 								<td className="py-1.5 pr-3 whitespace-nowrap">
-									{item ? `${item.label} ${item.emoji ?? ''}` : `API ${e.command.apiId}`}
+									{item ? (
+										<span className="inline-flex items-center gap-1.5">
+											{item.label} <MoveIcon robotType={robotType} move={item} />
+										</span>
+									) : (
+										`API ${e.command.apiId}`
+									)}
 								</td>
 								<td className="py-1.5 pr-3">
 									<WalletAddress address={e.command.sender} />

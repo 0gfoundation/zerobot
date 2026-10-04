@@ -4,14 +4,16 @@ import { use, useEffect, useMemo, useRef, useState, type ReactNode } from 'react
 import { formatEther, parseEther } from 'viem';
 import { useBalance, useConnection, useWalletClient } from 'wagmi';
 import { CommandStatus, waitForReceipt, type ResolvedMenuItem } from '@0g-foundation/zerobot-sdk';
-import { Button } from '@0gfoundation/0g-ui/shell';
 import { MoveReceipts, type ReceiptCard } from '@/components/move-receipts';
 import { WalletControls } from '@/components/wallet-controls';
+import { METAMASK } from '@/components/wallet/wallets';
 import { FaucetStep } from '@/components/faucet-step';
+import { MoveIcon } from '@/components/move-icon';
 import { Notice } from '@/components/notice';
 import { SwitchNetwork } from '@/components/switch-network';
 import { errorMessage, readClient, walletClient } from '@/lib/chain';
 import { defaultNetwork } from '@/lib/networks';
+import { robotFamily } from '@/lib/robots';
 import { receiptView, useMoveReceipts, type MoveReceipt } from '@/lib/move-receipts';
 import { useQueue } from '@/lib/use-queue';
 import { useQueuePaused } from '@/lib/use-queue-paused';
@@ -19,8 +21,32 @@ import { useRobot } from '@/lib/use-robot';
 import { useRobotStatus, type LiveStatus } from '@/lib/use-robot-status';
 
 const MAX_NOTE_BYTES = 64;
+/** The move grid's size: "Coming soon" cards fill what the menu doesn't */
+const MOVE_SLOTS = 6;
 /** Headroom over the price for gas, so the transaction doesn't fail on fees */
 const GAS_HEADROOM = parseEther('0.005');
+
+const ONLINE: LiveStatus = { operatorOnline: true, robotOnline: true, battery: 82, lastSeen: 0 };
+
+/**
+ * Previews for each state, e.g. `?demo=offline`; a bare `?demo` is `online`.
+ * Display only: paying still needs the robot to be online for real.
+ */
+const DEMO_STATES = {
+	online: { status: ONLINE, paused: false, queuePaused: false },
+	break: { status: ONLINE, paused: false, queuePaused: true },
+	paused: { status: ONLINE, paused: true, queuePaused: false },
+	reconnecting: { status: { ...ONLINE, robotOnline: false, battery: undefined }, paused: false, queuePaused: false },
+	offline: {
+		status: { operatorOnline: false, robotOnline: false, lastSeen: 0 },
+		paused: false,
+		queuePaused: false
+	}
+} satisfies Record<string, { status: LiveStatus; paused: boolean; queuePaused: boolean }>;
+type DemoState = keyof typeof DEMO_STATES;
+/** The demo's queue: the first is running, and one is "yours" */
+const DEMO_QUEUE = ['Priya', 'Marcus', 'Aiko', 'Diego', 'Sam'];
+const DEMO_MINE = 'Diego';
 
 function isRejection(err: unknown): boolean {
 	const e = err as { code?: unknown; message?: string } | undefined;
@@ -50,6 +76,11 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 	// Which request for a receipt is current, so a superseded one can't overwrite it
 	const attempts = useRef(new Map<string, number>());
 	const [now, setNow] = useState(() => Date.now());
+	const [demo, setDemo] = useState<DemoState | null>(null);
+	useEffect(() => {
+		const value = new URLSearchParams(window.location.search).get('demo');
+		if (value !== null) setDemo(value in DEMO_STATES ? (value as DemoState) : 'online');
+	}, []);
 	useEffect(() => {
 		const timer = setInterval(() => setNow(Date.now()), 1000);
 		return () => clearInterval(timer);
@@ -127,6 +158,31 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 	if (!data) return <p>No robot called “{name}”.</p>;
 
 	const displayName = data.displayName;
+	const stepsDone = [
+		Boolean(address) && !wrongChain,
+		enoughFunds,
+		noteBytes > 0 && noteBytes <= MAX_NOTE_BYTES,
+		Boolean(move)
+	];
+	const activeStep = stepsDone.indexOf(false);
+
+	// What the page shows about the robot: its real state, or a `?demo=` preview
+	const shown = demo ? DEMO_STATES[demo] : { status: status.data, paused, queuePaused };
+	const queueRows = pending.map((e) => ({
+		key: String(e.command.nonce),
+		name: e.command.note || 'Anonymous',
+		apiId: e.command.apiId,
+		mine: myNonces.has(String(e.command.nonce))
+	}));
+	const shownQueue =
+		demo && shown.status?.robotOnline && queueRows.length === 0
+			? DEMO_QUEUE.map((name, i) => ({
+					key: `demo-${i}`,
+					name,
+					apiId: data.menu[i % data.menu.length].apiId,
+					mine: name === DEMO_MINE
+				}))
+			: queueRows;
 
 	if (!data.robot.active || data.menu.length === 0) {
 		return <p>{displayName} isn&apos;t taking requests right now.</p>;
@@ -134,25 +190,48 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 
 	return (
 		<div className="mx-auto max-w-md">
-			<h1 className="text-3xl font-semibold tracking-tight">Make {displayName} move</h1>
-			<p className="mt-2 text-ink-soft">
-				Pick a move and pay {formatEther(data.price)} 0G in testnet tokens. Your name shows on the big
-				screen while {displayName} does it.
-			</p>
+			{/* The stage screen's look: the brand purple, the price badge, the live state */}
+			<section className="relative isolate overflow-hidden rounded-3xl bg-linear-to-br from-[#9200e1] to-[#b75fff] p-6 text-white shadow-[0_24px_60px_-24px_rgba(146,0,225,0.7)]">
+				<div aria-hidden className="absolute -top-20 -right-16 -z-10 size-56 rounded-full bg-white/15 blur-3xl" />
+				{robotFamily(data.robot.robotType) === 'go2' && (
+					// A render of the stage's Go2 model, faint behind the text
+					// eslint-disable-next-line @next/next/no-img-element
+					<img
+						src="/images/go2.webp"
+						alt=""
+						className="pointer-events-none absolute -right-8 -bottom-6 -z-10 w-60 opacity-30 select-none"
+					/>
+				)}
+				<StatusChip displayName={displayName} status={shown.status} paused={shown.paused} />
+				<h1 className="mt-4 text-4xl font-bold tracking-tight">Make {displayName} move</h1>
+				<p className="mt-2 text-white/85">
+					Your name goes up on the big screen while {displayName} does your move.
+				</p>
+				<p className="mt-5 flex flex-wrap items-center gap-x-2.5 gap-y-1 whitespace-nowrap">
+					<span className="text-3xl font-bold tabular-nums">{formatEther(data.price)} 0G</span>
+					<span className="rounded-full bg-white/20 px-2.5 py-0.5 text-sm font-semibold">Testnet</span>
+					<span className="text-lg font-medium text-white/85">/ per move</span>
+				</p>
+				{defaultNetwork.metaMaskOnly && (
+					<p className="mt-3 flex items-center gap-2 text-sm font-medium text-white/90">
+						{/* eslint-disable-next-line @next/next/no-img-element */}
+						<img src={METAMASK.icon} alt="" className="size-5" />
+						Pay with MetaMask
+					</p>
+				)}
+			</section>
 
-			{paused ? (
+			{shown.paused ? (
 				<Notice tone="warning" title="Moves are paused" className="mt-4">
-					{displayName} isn&apos;t taking new moves for a moment. Moves already paid for still run. This page
-					updates by itself.
+					Back soon. Moves already paid for still run.
 				</Notice>
 			) : (
-				<Availability displayName={displayName} status={status.data} className="mt-4" />
+				<Availability displayName={displayName} status={shown.status} className="mt-4" />
 			)}
 
-			{queuePaused && !paused && (
+			{shown.queuePaused && !shown.paused && (
 				<Notice tone="info" title={`${displayName} is taking a short break`} className="mt-4">
-					Moves wait in the queue until {displayName} is ready again, and you can still pay for one. This
-					page updates by itself.
+					You can still pay. Your move waits in line.
 				</Notice>
 			)}
 
@@ -162,7 +241,7 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 					return {
 						receipt,
 						view: receiptView(receipt, entries, now, displayName, queuePaused),
-						emoji: item?.emoji,
+						icon: <MoveIcon robotType={data.robot.robotType} move={item} />,
 						label: item?.label ?? 'Move'
 					};
 				})}
@@ -180,19 +259,19 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 				<button
 					type="button"
 					onClick={() => setFormOpen(true)}
-					className="mt-4 flex w-full cursor-pointer items-center justify-between rounded-2xl border border-dashed border-hairline px-4 py-3 text-sm font-medium text-ink-soft hover:bg-ink/5"
+					className="mt-4 flex w-full cursor-pointer items-center justify-between rounded-2xl border border-dashed border-brand-500/50 px-4 py-3 font-semibold text-brand-900 hover:bg-brand-500/10"
 				>
 					New move
-					<span aria-hidden>+</span>
+					<span aria-hidden className="text-xl">+</span>
 				</button>
 			) : (
-				<>
-				<Step n={1} title="Connect your wallet" done={Boolean(address) && !wrongChain} collapse>
+				<div className="mt-8">
+				<Step n={1} title="Connect your wallet" done={stepsDone[0]} active={activeStep === 0} collapse>
 					{!address && <WalletControls />}
 					{wrongChain && <SwitchNetwork />}
 				</Step>
 
-				<Step n={2} title="Get testnet 0G" done={enoughFunds} collapse>
+				<Step n={2} title="Get testnet 0G" done={stepsDone[1]} active={activeStep === 1} collapse>
 					{/* Only once step 1 is done: a wallet asked to sign before it's on the
 					    network can lose the reply (MetaMask on a phone did) */}
 					{address && !wrongChain && !enoughFunds && (
@@ -203,42 +282,54 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 					)}
 				</Step>
 
-				<Step n={3} title="Your name" done={noteBytes > 0 && noteBytes <= MAX_NOTE_BYTES}>
+				<Step n={3} title="Your name" done={stepsDone[2]} active={activeStep === 2}>
 					<input
 						value={note}
 						onChange={(e) => setNote(e.target.value)}
 						placeholder="Shown on the screen"
 						maxLength={MAX_NOTE_BYTES}
-						className="w-full rounded-xl border border-hairline bg-bg px-4 py-3 text-base outline-none focus:border-ink"
+						className="w-full rounded-xl border border-ink/15 bg-bg px-4 py-3 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/25"
 					/>
 					{noteBytes > MAX_NOTE_BYTES && <p className="mt-1 text-sm text-danger">That name is too long.</p>}
 				</Step>
 
-				<Step n={4} title="Pick a move" done={Boolean(move)}>
-					<div className="grid gap-2">
+				<Step n={4} title="Pick a move" done={stepsDone[3]} active={activeStep === 3} last>
+					<div className="grid grid-cols-2 gap-2">
 						{data.menu.map((item) => (
 							<button
 								key={item.apiId}
 								type="button"
 								onClick={() => setMove(item)}
-								className={`flex items-center gap-4 rounded-2xl border p-4 text-left transition ${
-									move?.apiId === item.apiId ? 'border-ink bg-ink/5' : 'border-hairline hover:border-hairline-strong'
+								aria-pressed={move?.apiId === item.apiId}
+								className={`flex min-h-32 cursor-pointer flex-col rounded-2xl border p-3 text-left transition ${
+									move?.apiId === item.apiId
+										? 'border-brand-500 bg-brand-500/10 ring-1 ring-brand-500'
+										: 'border-ink/10 hover:border-brand-500/50'
 								}`}
 							>
-								<span className="text-3xl">{item.emoji}</span>
-								<span>
-									<span className="block font-medium">{item.label}</span>
-									<span className="block text-sm text-ink-soft">{item.description}</span>
-								</span>
+								<MoveIcon robotType={data.robot.robotType} move={item} variant="tile" />
+								<span className="mt-2.5 text-xl leading-tight font-bold">{item.label}</span>
+								<span className="mt-1 line-clamp-3 text-sm leading-snug text-ink-soft">{item.description}</span>
 							</button>
+						))}
+						{Array.from({ length: Math.max(0, MOVE_SLOTS - data.menu.length) }, (_, i) => (
+							<div
+								key={`soon-${i}`}
+								aria-hidden
+								className="flex min-h-32 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-ink/15 p-3 text-center text-ink-muted"
+							>
+								<span className="text-2xl leading-none opacity-60">＋</span>
+								<span className="text-sm font-medium">Coming soon</span>
+							</div>
 						))}
 					</div>
 				</Step>
 
 				<div className="mt-6">
-					<Button
-						fullWidth
+					<button
+						type="button"
 						onClick={() => pay()}
+						className="flex h-14 w-full cursor-pointer items-center justify-center rounded-full bg-linear-to-br from-[#9200e1] to-[#b75fff] text-lg font-semibold text-white shadow-[0_12px_32px_-12px_rgba(146,0,225,0.8)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:from-ink/10 disabled:to-ink/10 disabled:text-ink-muted disabled:shadow-none"
 						disabled={
 							!available ||
 							!wallet ||
@@ -249,36 +340,91 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 							noteBytes > MAX_NOTE_BYTES
 						}
 					>
-						{paused
+						{shown.paused
 							? 'Paused'
-							: !status.data
+							: !shown.status
 							? `Checking ${displayName}…`
-							: available
+							: shown.status.robotOnline
 								? `Pay ${formatEther(data.price)} 0G`
-								: status.data.operatorOnline
+								: shown.status.operatorOnline
 									? `${displayName} is reconnecting…`
 									: `${displayName} is offline`}
-					</Button>
+					</button>
 				</div>
-				</>
+				</div>
 			)}
 
-			{pending.length > 0 && (
+			{shownQueue.length > 0 && (
 				<section className="mt-8">
-					<h2 className="text-sm font-medium uppercase tracking-wider text-ink-muted">In the queue</h2>
-					<ol className="mt-2 space-y-1 text-sm">
-						{pending.map((e, i) => (
-							<li key={String(e.command.nonce)} className="flex justify-between">
-								<span className={myNonces.has(String(e.command.nonce)) ? 'font-semibold' : ''}>
-									{e.command.note || 'Anonymous'}
-								</span>
-								<span className="text-ink-muted">{i === 0 ? 'now' : `#${i + 1}`}</span>
-							</li>
-						))}
+					<h2 className="flex items-center gap-2 text-sm font-semibold tracking-[0.2em] text-ink-muted uppercase">
+						Up next
+						<span className="rounded-full bg-ink/10 px-2 py-0.5 tracking-normal text-ink">{shownQueue.length}</span>
+					</h2>
+					<ol className="mt-3 space-y-1.5">
+						{shownQueue.map((e, i) => {
+							const item = data.menu.find((m) => m.apiId === e.apiId);
+							return (
+								<li
+									key={e.key}
+									className={`flex items-center gap-3 rounded-2xl border px-3 py-2.5 ${
+										i === 0 ? 'border-brand-500/50 bg-brand-500/10' : 'border-ink/10'
+									}`}
+								>
+									<span
+										className={`flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full px-2 text-xs font-semibold ${
+											i === 0 ? 'bg-brand-500 text-white' : 'bg-ink/10 text-ink-muted'
+										}`}
+									>
+										{i === 0 ? 'Now' : i + 1}
+									</span>
+									<span className="min-w-0 flex-1 truncate font-medium">{e.name}</span>
+									{e.mine && (
+										<span className="shrink-0 rounded-full bg-brand-500 px-2 py-0.5 text-xs font-semibold text-white">
+											You
+										</span>
+									)}
+									<span className="flex shrink-0 items-center gap-1.5 text-sm text-ink-muted">
+										{item?.label} <MoveIcon robotType={data.robot.robotType} move={item} />
+									</span>
+								</li>
+							);
+						})}
 					</ol>
 				</section>
 			)}
 		</div>
+	);
+}
+
+/** The hero's live state, as the stage shows it */
+function StatusChip({
+	displayName,
+	status,
+	paused
+}: {
+	displayName: string;
+	status: LiveStatus | undefined;
+	paused: boolean;
+}) {
+	const [dot, text] = paused
+		? ['bg-amber-300', 'Paused']
+		: !status
+			? ['bg-white/60', `Checking ${displayName}…`]
+			: status.robotOnline
+				? ['bg-emerald-300', `${displayName} is online${status.battery === undefined ? '' : ` · battery ${status.battery}%`}`]
+				: status.operatorOnline
+					? ['bg-amber-300', `${displayName} is reconnecting`]
+					: ['bg-red-300', `${displayName} is offline`];
+	return (
+		<p className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-sm font-medium">
+			<span className="relative flex size-2">
+				{status?.robotOnline && !paused && (
+					<span className={`absolute inline-flex size-full animate-ping rounded-full opacity-75 ${dot}`} />
+				)}
+				<span className={`relative inline-flex size-2 rounded-full ${dot}`} />
+			</span>
+			{text}
+		</p>
 	);
 }
 
@@ -292,59 +438,71 @@ function Availability({
 	status: LiveStatus | undefined;
 	className?: string;
 }) {
-	if (!status) return null;
-	if (status.robotOnline) {
-		const battery = status.battery === undefined ? '' : ` · battery ${status.battery}%`;
-		return (
-			<p className={`flex items-center gap-2 text-sm text-ink-soft ${className}`}>
-				<span aria-hidden className="size-2 rounded-full bg-success" />
-				{displayName} is online{battery}
-			</p>
-		);
-	}
+	// Online needs no notice: the hero's chip says so
+	if (!status || status.robotOnline) return null;
 	if (status.operatorOnline) {
 		return (
 			<Notice tone="warning" title={`${displayName} is reconnecting`} className={className}>
-				{displayName} lost its connection and is coming back. Moves are paused until then, so you
-				can&apos;t pay yet. This page updates by itself.
+				Back in a moment. You can pay once {displayName} reconnects.
 			</Notice>
 		);
 	}
 	return (
 		<Notice tone="warning" title={`${displayName} is offline`} className={className}>
-			{displayName} isn&apos;t taking moves right now. You can still connect your wallet and get testnet 0G
-			while you wait. This page updates by itself.
+			Get set up now and pay when {displayName} is back.
 		</Notice>
 	);
 }
 
+/**
+ * One step of the form on a timeline: its number, and a line down to the
+ * next step that fills in once this one is done.
+ */
 function Step({
 	n,
 	title,
 	done,
+	active,
+	last = false,
 	collapse = false,
 	children
 }: {
 	n: number;
 	title: string;
 	done: boolean;
+	/** The first step not done yet */
+	active: boolean;
+	last?: boolean;
 	/** Hide the step's content once it's done */
 	collapse?: boolean;
 	children?: ReactNode;
 }) {
+	const showContent = !(done && collapse) && children;
 	return (
-		<section className="mt-6">
-			<h2 className="flex items-center gap-2 font-medium">
+		<section className={`relative flex gap-4 ${last ? '' : 'pb-7'}`}>
+			{!last && (
 				<span
-					className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${
-						done ? 'bg-success text-bg' : 'bg-ink text-on-ink'
+					aria-hidden
+					className={`absolute top-9 bottom-1 left-[15px] w-0.5 rounded-full transition-colors duration-500 ${
+						done ? 'bg-brand-500' : 'bg-ink/10'
 					}`}
-				>
-					{done ? '✓' : n}
-				</span>
-				{title}
-			</h2>
-			{!(done && collapse) && children && <div className="mt-3">{children}</div>}
+				/>
+			)}
+			<span
+				className={`relative flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold transition-colors duration-500 ${
+					done
+						? 'bg-brand-500 text-white'
+						: active
+							? 'bg-bg text-brand-900 ring-2 ring-brand-500'
+							: 'bg-ink/10 text-ink-muted'
+				}`}
+			>
+				{done ? '✓' : n}
+			</span>
+			<div className="min-w-0 flex-1">
+				<h2 className={`flex h-8 items-center font-semibold ${done || active ? '' : 'text-ink-muted'}`}>{title}</h2>
+				{showContent && <div className="mt-3">{children}</div>}
+			</div>
 		</section>
 	);
 }
