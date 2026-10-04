@@ -4,7 +4,7 @@
  * Usage:
  *   npx tsx send-ai-command.ts "make the robot dance and then wave hello"
  *
- * Requires: 0G Compute funds deposited via @0glabs/0g-serving-broker
+ * Requires: 0G Compute funds deposited via @0gfoundation/0g-compute-ts-sdk
  */
 import "dotenv/config";
 import { AIBroker, Commander } from "@0g-foundation/zerobot-sdk";

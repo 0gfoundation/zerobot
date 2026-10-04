@@ -37,7 +37,7 @@ export type {
 } from "./recording/index.js";
 
 // AI integration (AIBroker requires a Node runtime + the optional
-// @0glabs/0g-serving-broker peer dependency at call time)
+// @0gfoundation/0g-compute-ts-sdk peer dependency at call time)
 export { AIBroker, buildSystemPrompt, parseLLMResponse } from "./ai/index.js";
 
 // Types
