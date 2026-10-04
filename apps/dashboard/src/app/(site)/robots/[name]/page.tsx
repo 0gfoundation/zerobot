@@ -2,12 +2,13 @@
 
 import { use, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { formatEther, parseEther } from 'viem';
-import { useBalance, useConnection, useSwitchChain, useWalletClient } from 'wagmi';
+import { useBalance, useConnection, useWalletClient } from 'wagmi';
 import { CommandStatus, waitForReceipt, type ResolvedMenuItem } from '@0g-foundation/zerobot-sdk';
 import { Button, ButtonLink } from '@0gfoundation/0g-ui/shell';
 import { MoveReceipts, type ReceiptCard } from '@/components/move-receipts';
 import { WalletControls } from '@/components/wallet-controls';
 import { Notice } from '@/components/notice';
+import { SwitchNetwork } from '@/components/switch-network';
 import { WalletAddress } from '@/components/wallet-address';
 import { errorMessage, readClient, walletClient } from '@/lib/chain';
 import { defaultNetwork } from '@/lib/networks';
@@ -31,7 +32,6 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 	const robot = useRobot(name);
 	const { address, chainId } = useConnection();
 	const { data: wallet } = useWalletClient();
-	const switchChain = useSwitchChain();
 	const balance = useBalance({ address, chainId: defaultNetwork.chain.id, query: { refetchInterval: 4000 } });
 	const { entries } = useQueue(robot.data?.robotId, 50);
 	const status = useRobotStatus(robot.data?.robotId);
@@ -173,11 +173,7 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 				<>
 				<Step n={1} title="Connect your wallet" done={Boolean(address) && !wrongChain} collapse>
 					{!address && <WalletControls />}
-					{wrongChain && (
-						<Button onClick={() => switchChain.mutate({ chainId: defaultNetwork.chain.id })}>
-							Switch to {defaultNetwork.chain.name}
-						</Button>
-					)}
+					{wrongChain && <SwitchNetwork />}
 				</Step>
 
 				<Step n={2} title="Get testnet 0G" done={enoughFunds} collapse>
