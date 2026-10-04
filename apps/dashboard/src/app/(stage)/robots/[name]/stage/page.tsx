@@ -138,8 +138,8 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 	const labelFor = (apiId: number) => data.menu.find((m) => m.apiId === apiId);
 
 	return (
-		<div className="grid h-dvh grid-cols-[1fr_26rem] gap-8 bg-bg p-8 text-ink">
-			<section className="relative flex min-h-0 flex-col">
+		<div className="grid h-dvh grid-cols-[minmax(0,1fr)_26rem] gap-8 bg-bg p-8 text-ink">
+			<section className="relative flex min-h-0 min-w-0 flex-col">
 				<div className="mb-4 h-20">
 					{current ? (
 						<>
