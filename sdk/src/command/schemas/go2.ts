@@ -6,7 +6,7 @@ export const GO2_SPORT_SCHEMAS: CommandSchema[] = [
   { apiId: SportCommand.BalanceStand, name: "BalanceStand", emoji: "⚖️", description: "Active balanced standing", estimatedDurationMs: 1000 },
   { apiId: SportCommand.StopMove, name: "StopMove", emoji: "🛑", description: "Halt all movement", estimatedDurationMs: 500 },
   { apiId: SportCommand.StandUp, name: "StandUp", emoji: "🧍", description: "Rise from lying position", estimatedDurationMs: 2000 },
-  { apiId: SportCommand.StandDown, name: "StandDown", label: "Lie down", emoji: "🛌", description: "Lower body / lie down", exitApiId: SportCommand.StandUp, estimatedDurationMs: 2000 },
+  { apiId: SportCommand.StandDown, name: "StandDown", label: "Lie down", emoji: "🛌", description: "Lower body / lie down", exitApiId: SportCommand.StandUp, estimatedDurationMs: 2050 },
   { apiId: SportCommand.RecoveryStand, name: "RecoveryStand", emoji: "🩹", description: "Recovery to standing after fall", estimatedDurationMs: 3000 },
   {
     apiId: SportCommand.Euler, name: "Euler", emoji: "📐", description: "Set body orientation (roll, pitch, yaw in radians)", estimatedDurationMs: 1000,

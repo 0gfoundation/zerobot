@@ -507,6 +507,7 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     params?: Record<string, unknown>,
   ): Promise<void> {
     const estimate = SCHEMA_BY_API_ID.get(apiId)?.estimatedDurationMs ?? 0;
+    const sentAt = Date.now();
     let code: number | null;
     try {
       code = await this.robot().sportCommandAndWait(
@@ -529,6 +530,11 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     } else if (code !== 0) {
       throw new Error(`Robot replied with code ${code} to apiId ${apiId}`);
     }
+    // Most moves reply when they finish, but some reply at once: StandDown
+    // answers in 10ms and takes 2s to lie down. Waiting out the move's
+    // duration keeps the exit move and the next command from cutting it short.
+    const left = estimate - (Date.now() - sentAt);
+    if (left > 0) await sleep(left);
   }
 
   private finish(cmd: OnChainCommand, success: boolean, resultData: string): void {
