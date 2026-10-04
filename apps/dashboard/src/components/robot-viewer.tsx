@@ -150,7 +150,12 @@ export function RobotViewer({
 		const camera = new THREE.PerspectiveCamera(50, el.clientWidth / el.clientHeight, 0.01, 100);
 
 		const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-		renderer.setSize(el.clientWidth, el.clientHeight);
+		// The canvas fills its container through CSS. A size set in pixels on
+		// the element would stop the container shrinking below it.
+		renderer.setSize(el.clientWidth, el.clientHeight, false);
+		renderer.domElement.style.display = 'block';
+		renderer.domElement.style.width = '100%';
+		renderer.domElement.style.height = '100%';
 		renderer.setPixelRatio(window.devicePixelRatio);
 		renderer.shadowMap.enabled = true;
 		renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -187,7 +192,7 @@ export function RobotViewer({
 		const resize = new ResizeObserver(() => {
 			camera.aspect = el.clientWidth / el.clientHeight;
 			camera.updateProjectionMatrix();
-			renderer.setSize(el.clientWidth, el.clientHeight);
+			renderer.setSize(el.clientWidth, el.clientHeight, false);
 		});
 		resize.observe(el);
 
