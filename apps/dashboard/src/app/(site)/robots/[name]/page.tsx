@@ -4,12 +4,12 @@ import { use, useEffect, useMemo, useRef, useState, type ReactNode } from 'react
 import { formatEther, parseEther } from 'viem';
 import { useBalance, useConnection, useWalletClient } from 'wagmi';
 import { CommandStatus, waitForReceipt, type ResolvedMenuItem } from '@0g-foundation/zerobot-sdk';
-import { Button, ButtonLink } from '@0gfoundation/0g-ui/shell';
+import { Button } from '@0gfoundation/0g-ui/shell';
 import { MoveReceipts, type ReceiptCard } from '@/components/move-receipts';
 import { WalletControls } from '@/components/wallet-controls';
+import { FaucetStep } from '@/components/faucet-step';
 import { Notice } from '@/components/notice';
 import { SwitchNetwork } from '@/components/switch-network';
-import { WalletAddress } from '@/components/wallet-address';
 import { errorMessage, readClient, walletClient } from '@/lib/chain';
 import { defaultNetwork } from '@/lib/networks';
 import { receiptView, useMoveReceipts, type MoveReceipt } from '@/lib/move-receipts';
@@ -21,7 +21,6 @@ import { useRobotStatus, type LiveStatus } from '@/lib/use-robot-status';
 const MAX_NOTE_BYTES = 64;
 /** Headroom over the price for gas, so the transaction doesn't fail on fees */
 const GAS_HEADROOM = parseEther('0.005');
-const FAUCET_URL = 'https://faucet.0g.ai';
 
 function isRejection(err: unknown): boolean {
 	const e = err as { code?: unknown; message?: string } | undefined;
@@ -194,20 +193,7 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 				</Step>
 
 				<Step n={2} title="Get testnet 0G" done={enoughFunds} collapse>
-					{address && !enoughFunds && (
-						<>
-							<p className="text-sm text-ink-soft">
-								You need at least {formatEther(data.price + GAS_HEADROOM)} 0G. Paste your address into
-								the faucet, then come back. This updates by itself.
-							</p>
-							<WalletAddress address={address} full copyable className="mt-2 text-sm" />
-							<div className="mt-3">
-								<ButtonLink href={FAUCET_URL} external variant="secondary" size="small">
-									Open the faucet
-								</ButtonLink>
-							</div>
-						</>
-					)}
+					{address && !enoughFunds && <FaucetStep address={address} needed={data.price + GAS_HEADROOM} />}
 					{balance.data && (
 						<p className="mt-2 text-xs text-ink-muted">Balance: {formatEther(balance.data.value)} 0G</p>
 					)}
