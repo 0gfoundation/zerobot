@@ -265,11 +265,13 @@ function forget(address: string) {
 	}
 }
 
+/** Opens the public faucet in a new tab, and switches the step to show the address to paste there */
 function PublicFaucetLink({ onClick }: { onClick: () => void }) {
 	return (
-		<button type="button" onClick={onClick} className="cursor-pointer underline">
+		<a href={PUBLIC_FAUCET_URL} target="_blank" rel="noopener noreferrer" onClick={onClick} className="underline">
 			Or use the public faucet
-		</button>
+			<span aria-hidden> ↗</span>
+		</a>
 	);
 }
 
@@ -285,6 +287,7 @@ function ManualFaucet({ address, needed }: { address: `0x${string}`; needed: big
 			<div className="mt-3">
 				<ButtonLink href={PUBLIC_FAUCET_URL} external variant="secondary" size="small">
 					Open the faucet
+					<span aria-hidden> ↗</span>
 				</ButtonLink>
 			</div>
 		</>
