@@ -7,10 +7,8 @@ import { useConnection, useWalletClient } from 'wagmi';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Robot, RobotSettings } from '@0g-foundation/zerobot-sdk';
 import { Button } from '@0gfoundation/0g-ui/shell';
-import { DirectControl } from '@/components/direct-control';
 import { WalletAddress } from '@/components/wallet-address';
 import { errorMessage, readClient, walletClient } from '@/lib/chain';
-import { LOCAL_MODE } from '@/lib/mode';
 import { menuFor, ROBOT_TYPE_LABELS, robotIdFor } from '@/lib/robots';
 
 /** bytes32 placeholder for "no storage root yet" */
@@ -38,7 +36,6 @@ export default function OwnerPage() {
 	const { data: wallet } = useWalletClient();
 	const queryClient = useQueryClient();
 	const [log, setLog] = useState<string[]>([]);
-	const [selected, setSelected] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 
 	const addLog = (line: string) => setLog((l) => [...l, `[${new Date().toLocaleTimeString()}] ${line}`]);
@@ -87,8 +84,6 @@ export default function OwnerPage() {
 		);
 	}
 
-	const selectedRobot = robots.data?.find((r) => r.robotId === selected);
-
 	return (
 		<>
 			<section className={card}>
@@ -107,8 +102,6 @@ export default function OwnerPage() {
 								key={`${r.robotId}-${r.price}-${r.publicCommands}-${r.active}-${r.operators.join()}`}
 								robot={r}
 								busy={busy}
-								selected={r.robotId === selected}
-								onSelect={() => setSelected(r.robotId)}
 								run={run}
 							/>
 						))}
@@ -118,15 +111,6 @@ export default function OwnerPage() {
 				<hr className="my-4 border-hairline" />
 				<RegisterForm busy={busy} run={run} log={addLog} />
 			</section>
-
-			{LOCAL_MODE && selectedRobot && (
-				<DirectControl
-					key={selectedRobot.robotId}
-					name={selectedRobot.name}
-					robotType={selectedRobot.robotType}
-					log={addLog}
-				/>
-			)}
 
 			<section className={`${card} mt-4`}>
 				<h2 className={heading}>Log</h2>
@@ -216,14 +200,10 @@ function RegisterForm({ busy, run, log }: { busy: boolean; run: Run; log: (line:
 function RobotRow({
 	robot: r,
 	busy,
-	selected,
-	onSelect,
 	run
 }: {
 	robot: OwnedRobot;
 	busy: boolean;
-	selected: boolean;
-	onSelect: () => void;
 	run: Run;
 }) {
 	const [price, setPrice] = useState(formatEther(r.price));
@@ -254,7 +234,7 @@ function RobotRow({
 	}
 
 	return (
-		<div className={`rounded-xl border p-3 ${selected ? 'border-ink' : 'border-hairline'}`}>
+		<div className="rounded-xl border border-hairline p-3">
 			<div className="flex flex-wrap items-center gap-2">
 				<span className="font-medium">{r.name}</span>
 				<span className="text-sm text-ink-muted">{ROBOT_TYPE_LABELS[r.robotType] ?? r.robotType}</span>
@@ -325,16 +305,12 @@ function RobotRow({
 				>
 					Save
 				</Button>
-				{LOCAL_MODE && r.active && !selected && (
-					<Button size="small" variant="secondary" onClick={onSelect}>
-						Control
-					</Button>
-				)}
+				{/* The console has the robot's status, controls and, in local mode, direct control */}
+				<Link href={`/robots/${r.name}/console`} className="ml-2 text-sm underline">
+					Console
+				</Link>
 				{hasMenu && (
 					<>
-						<Link href={`/robots/${r.name}/console`} className="ml-2 text-sm underline">
-							Console
-						</Link>
 						<Link href={`/robots/${r.name}`} className="text-sm underline">
 							Public page
 						</Link>
