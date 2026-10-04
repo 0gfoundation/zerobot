@@ -29,6 +29,8 @@ export interface OperatorNodeEvents {
   status: (status: OperatorStatus) => void;
   /** The chain RPC answers again after an outage reported through `error` */
   chainRecovered: () => void;
+  /** The owner or an operator paused or resumed the queue on-chain */
+  queuePaused: (paused: boolean) => void;
   error: (error: Error) => void;
 }
 
@@ -78,6 +80,9 @@ class RobotLinkLost extends Error {}
  */
 const NO_REPLY_SILENCE_MS = 2000;
 
+/** How often to check a paused queue for the resume, in ms */
+const PAUSE_POLL_MS = 2000;
+
 /** Waits between reconnect attempts, in ms; the last repeats */
 const RECONNECT_BACKOFF_MS = [1000, 2000, 5000, 10_000];
 
@@ -115,6 +120,12 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
   private lastRobotMessageAt = 0;
   private reconnecting = false;
   private robotWaiters: Array<() => void> = [];
+  private queuePaused = false;
+  /**
+   * When the queue last resumed, in ms. Expiry counts from here for commands
+   * paid before it, so a long pause doesn't expire what people paid for.
+   */
+  private resumedAt = 0;
   private timers: ReturnType<typeof setInterval>[] = [];
 
   // Receipts and status reports are broadcast one at a time from the same
@@ -368,7 +379,26 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
   }
 
   private expired(cmd: OnChainCommand): boolean {
-    return Math.floor(Date.now() / 1000) - Number(cmd.timestamp) > OperatorNode.COMMAND_EXPIRY_S;
+    const since = Math.max(Number(cmd.timestamp) * 1000, this.resumedAt);
+    return Date.now() - since > OperatorNode.COMMAND_EXPIRY_S * 1000;
+  }
+
+  /**
+   * Whether the queue is paused on-chain, read fresh. A failed read keeps
+   * the last answer: the chain is down, so receipts are stuck anyway.
+   */
+  private async checkPaused(): Promise<boolean> {
+    try {
+      const paused = await this.client.isQueuePaused(this.robotId);
+      if (paused !== this.queuePaused) {
+        this.queuePaused = paused;
+        if (!paused) this.resumedAt = Date.now();
+        this.emit("queuePaused", paused);
+      }
+    } catch {
+      // Keep the last answer
+    }
+    return this.queuePaused;
   }
 
   private async handleCommand(cmd: OnChainCommand): Promise<void> {
@@ -377,9 +407,15 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
       return;
     }
 
-    // While the robot is away the queue waits, rather than failing
-    // commands people paid for. They still expire.
-    await this.waitForRobot();
+    // While the robot is away or the queue is paused, the queue waits rather
+    // than failing commands people paid for. They still expire, counting a
+    // pause from its end.
+    for (;;) {
+      await this.waitForRobot();
+      if (!this.running) return;
+      if (!(await this.checkPaused())) break;
+      await sleep(PAUSE_POLL_MS);
+    }
     if (!this.running) return;
     if (this.expired(cmd)) {
       this.finish(cmd, false, "Command expired");

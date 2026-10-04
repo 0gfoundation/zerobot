@@ -14,6 +14,7 @@ import { errorMessage, readClient, walletClient } from '@/lib/chain';
 import { defaultNetwork } from '@/lib/networks';
 import { receiptView, useMoveReceipts, type MoveReceipt } from '@/lib/move-receipts';
 import { useQueue } from '@/lib/use-queue';
+import { useQueuePaused } from '@/lib/use-queue-paused';
 import { useRobot } from '@/lib/use-robot';
 import { useRobotStatus, type LiveStatus } from '@/lib/use-robot-status';
 
@@ -35,6 +36,7 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 	const balance = useBalance({ address, chainId: defaultNetwork.chain.id, query: { refetchInterval: 4000 } });
 	const { entries } = useQueue(robot.data?.robotId, 50);
 	const status = useRobotStatus(robot.data?.robotId);
+	const queuePaused = useQueuePaused(robot.data?.robotId).data ?? false;
 	// Only take payment when the operator and robot are both up, or the move
 	// would wait in the queue and expire, and the owner hasn't paused payments
 	const paused = robot.data ? !robot.data.robot.publicCommands : false;
@@ -148,12 +150,19 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 				<Availability displayName={displayName} status={status.data} className="mt-4" />
 			)}
 
+			{queuePaused && !paused && (
+				<Notice tone="info" title={`${displayName} is taking a short break`} className="mt-4">
+					Moves wait in the queue until {displayName} is ready again, and you can still pay for one. This
+					page updates by itself.
+				</Notice>
+			)}
+
 			<MoveReceipts
 				cards={receipts.map((receipt): ReceiptCard => {
 					const item = data.menu.find((m) => m.apiId === receipt.apiId);
 					return {
 						receipt,
-						view: receiptView(receipt, entries, now, displayName),
+						view: receiptView(receipt, entries, now, displayName, queuePaused),
 						emoji: item?.emoji,
 						label: item?.label ?? 'Move'
 					};
@@ -164,7 +173,7 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 				}}
 				onClose={remove}
 				onClearCompleted={() =>
-					setReceipts((prev) => prev.filter((r) => !receiptView(r, entries, now, displayName).terminal))
+					setReceipts((prev) => prev.filter((r) => !receiptView(r, entries, now, displayName, queuePaused).terminal))
 				}
 			/>
 

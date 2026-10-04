@@ -13,8 +13,9 @@ import {
 } from '@0g-foundation/zerobot-sdk';
 import { RobotViewer, type RobotViewerHandle } from '@/components/robot-viewer';
 import { robotFamily } from '@/lib/robots';
-import { recordingTime, schedule, type Slot } from '@/lib/schedule';
+import { recordingTime, schedule, type Hold, type Slot } from '@/lib/schedule';
 import { useQueue } from '@/lib/use-queue';
+import { useQueuePaused } from '@/lib/use-queue-paused';
 import { useRobot } from '@/lib/use-robot';
 import { useRobotStatus } from '@/lib/use-robot-status';
 
@@ -36,12 +37,20 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 	const [now, setNow] = useState(() => Date.now());
 	const status = useRobotStatus(data?.robotId);
 	const robotOnline = status.data?.robotOnline ?? false;
-	// When the robot last came online. The operator holds the queue while it's
-	// away, so the schedule restarts from here rather than catching up.
-	const [availableFrom, setAvailableFrom] = useState(0);
+	const queuePaused = useQueuePaused(data?.robotId).data ?? false;
+	// When the operator starts nothing new: while the robot is away or the
+	// queue is paused. Kept as times so moves before a hold keep their slots,
+	// and the ones after start from its end rather than catching up.
+	const held = !robotOnline || queuePaused;
+	const [holds, setHolds] = useState<Hold[]>([{ from: 0, to: Infinity }]);
 	useEffect(() => {
-		if (robotOnline) setAvailableFrom(Date.now());
-	}, [robotOnline]);
+		setHolds((prev) => {
+			const last = prev[prev.length - 1];
+			const open = last?.to === Infinity;
+			if (held === open) return prev;
+			return held ? [...prev, { from: Date.now(), to: Infinity }] : [...prev.slice(0, -1), { ...last, to: Date.now() }];
+		});
+	}, [held]);
 
 	// A projector reads better dark
 	useEffect(() => {
@@ -81,8 +90,8 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 	}, [data]);
 
 	const slots = useMemo(
-		() => (robotOnline ? schedule(entries, schemas, menu, availableFrom) : []),
-		[entries, schemas, menu, robotOnline, availableFrom]
+		() => (robotOnline ? schedule(entries, schemas, menu, holds) : []),
+		[entries, schemas, menu, robotOnline, holds]
 	);
 	const slotsRef = useRef<Slot[]>([]);
 	slotsRef.current = slots;
@@ -152,7 +161,9 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 						</>
 					) : (
 						<p className="pt-6 text-4xl font-semibold text-ink-muted">
-							{status.isPending || robotOnline
+							{robotOnline && queuePaused
+								? `${data.displayName} is taking a short break`
+								: status.isPending || robotOnline
 								? `${data.displayName} is waiting for a move`
 								: status.data?.operatorOnline
 									? `${data.displayName} is reconnecting…`
@@ -196,7 +207,14 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 					</div>
 				)}
 
-				<h2 className="mt-8 text-sm font-medium uppercase tracking-wider text-ink-muted">Up next</h2>
+				<h2 className="mt-8 flex items-center gap-3 text-sm font-medium uppercase tracking-wider text-ink-muted">
+					Up next
+					{queuePaused && robotOnline && (
+						<span className="rounded-full bg-warning/15 px-2 py-0.5 text-warning normal-case tracking-normal">
+							Queue paused
+						</span>
+					)}
+				</h2>
 				<ol className="mt-2 space-y-2 text-xl">
 					{[...upcoming.map((s) => s.entry), ...unplaced].slice(0, 6).map((e, i) => (
 						<li key={String(e.command.nonce)} className="flex justify-between gap-4">

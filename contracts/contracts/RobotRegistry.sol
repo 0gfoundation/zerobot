@@ -29,6 +29,9 @@ contract RobotRegistry is
     mapping(bytes32 => mapping(address => bool)) private _operators;
     mapping(bytes32 => uint256) private _commandPrices;
     mapping(bytes32 => RobotStatus) private _status;
+    // Holds the operator's queue: queued and new commands wait, nothing new
+    // starts. Appended for the upgrade, so earlier slots don't move.
+    mapping(bytes32 => bool) private _queuePaused;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -148,6 +151,22 @@ contract RobotRegistry is
 
     function getStatus(bytes32 robotId) external view returns (RobotStatus memory) {
         return _status[robotId];
+    }
+
+    /// Pause or resume the robot's queue, e.g. to reposition the robot. The
+    /// operator finishes the command it's running and starts no others until
+    /// resumed. Payments still go through; `setPublicCommands` stops those.
+    function setQueuePaused(bytes32 robotId, bool paused) external {
+        require(
+            _robots[robotId].owner == msg.sender || _operators[robotId][msg.sender],
+            "Only robot owner or operator can pause the queue"
+        );
+        _queuePaused[robotId] = paused;
+        emit QueuePausedSet(robotId, msg.sender, paused);
+    }
+
+    function isQueuePaused(bytes32 robotId) external view returns (bool) {
+        return _queuePaused[robotId];
     }
 
     function setCommandPrice(

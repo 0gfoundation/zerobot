@@ -29,6 +29,7 @@ Each robot has its own roles. The wallet that registers it is the owner, and the
 |---|:-:|:-:|:-:|:-:|
 | Send commands, paying the robot's price | ✓ | ✓ | if public | if public |
 | Submit receipts | ✓ | | ✓ | |
+| Report status, pause the queue | ✓ | | ✓ | |
 | Set price, public access, active | ✓ | | | |
 | Add or remove controllers and operators | ✓ | | | |
 | Withdraw payments | ✓ | | | |

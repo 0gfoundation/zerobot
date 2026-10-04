@@ -11,6 +11,7 @@ import { WalletAddress } from '@/components/wallet-address';
 import { errorMessage, readClient, walletClient } from '@/lib/chain';
 import { defaultNetwork } from '@/lib/networks';
 import { useQueue, type QueueEntry } from '@/lib/use-queue';
+import { useQueuePaused } from '@/lib/use-queue-paused';
 import { useRobot } from '@/lib/use-robot';
 import { useRobotStatus } from '@/lib/use-robot-status';
 
@@ -37,9 +38,11 @@ export default function ConsolePage({ params }: { params: Promise<{ name: string
 	const data = robot.data;
 	const status = useRobotStatus(data?.robotId);
 	const { entries, error: queueError } = useQueue(data?.robotId, 30);
+	const queuePaused = useQueuePaused(data?.robotId);
 	const { address, chainId } = useConnection();
 	const { data: wallet } = useWalletClient();
-	const [busy, setBusy] = useState(false);
+	/** Which control is waiting on the wallet */
+	const [busy, setBusy] = useState<'payments' | 'queue' | null>(null);
 	const [actionError, setActionError] = useState<string | null>(null);
 	const [now, setNow] = useState(() => Date.now());
 	useEffect(() => {
@@ -61,18 +64,21 @@ export default function ConsolePage({ params }: { params: Promise<{ name: string
 	const wrongChain = Boolean(address && chainId !== defaultNetwork.chain.id);
 	const paymentsOpen = data.robot.publicCommands;
 
-	/** Send an owner transaction and reread the robot once it lands */
-	async function act(write: (client: ReturnType<typeof walletClient>) => Promise<unknown>) {
+	const canPauseQueue = isOwner || Boolean(isOperator.data);
+	const paused = queuePaused.data ?? false;
+
+	/** Send a transaction and reread the robot and queue once it lands */
+	async function act(control: 'payments' | 'queue', write: (client: ReturnType<typeof walletClient>) => Promise<unknown>) {
 		if (!wallet) return;
-		setBusy(true);
+		setBusy(control);
 		setActionError(null);
 		try {
 			await write(walletClient(wallet));
-			await robot.refetch();
+			await Promise.all([robot.refetch(), queuePaused.refetch()]);
 		} catch (err) {
 			setActionError(errorMessage(err));
 		} finally {
-			setBusy(false);
+			setBusy(null);
 		}
 	}
 
@@ -114,37 +120,59 @@ export default function ConsolePage({ params }: { params: Promise<{ name: string
 
 			<section className={card}>
 				<h2 className={heading}>Controls</h2>
-				<div className="flex flex-wrap items-center justify-between gap-3">
-					<div>
-						<p className="font-medium">
-							<Dot on={paymentsOpen} /> {paymentsOpen ? 'Taking payments' : 'Payments paused'}
-						</p>
-						<p className="mt-0.5 text-sm text-ink-soft">
-							{paymentsOpen
-								? 'Pausing stops new moves being paid for. Queued moves still run.'
-								: 'Nobody can pay for a move. The stage screen shows Paused instead of the QR code.'}
-						</p>
+				{wrongChain && (isOwner || canPauseQueue) && (
+					<div className="mb-4">
+						<SwitchNetwork />
 					</div>
-					{isOwner &&
-						(wrongChain ? (
-							<SwitchNetwork />
-						) : (
-							<Button
-								variant={paymentsOpen ? 'secondary' : 'primary'}
-								disabled={busy}
-								onClick={() => act((c) => c.configureRobot(data.robotId, { publicCommands: !paymentsOpen }))}
-							>
-								{busy ? 'Confirm in your wallet…' : paymentsOpen ? 'Pause payments' : 'Resume payments'}
-							</Button>
-						))}
-				</div>
-				{actionError && <p className="mt-2 text-sm text-danger">{actionError}</p>}
+				)}
+				<Control
+					on={!paused}
+					title={paused ? 'Queue paused' : 'Queue running'}
+					detail={
+						paused
+							? 'The robot starts no new moves. Payments still come in and wait in the queue.'
+							: 'Pausing lets the current move finish, then holds the rest, e.g. to reposition the robot.'
+					}
+				>
+					{canPauseQueue && !wrongChain && (
+						<Button
+							variant={paused ? 'primary' : 'secondary'}
+							disabled={busy !== null || queuePaused.isPending}
+							onClick={() => act('queue', (c) => c.setQueuePaused(data.robotId, !paused))}
+						>
+							{busy === 'queue' ? 'Confirm in your wallet…' : paused ? 'Resume queue' : 'Pause queue'}
+						</Button>
+					)}
+				</Control>
+				<hr className="my-4 border-hairline" />
+				<Control
+					on={paymentsOpen}
+					title={paymentsOpen ? 'Taking payments' : 'Payments paused'}
+					detail={
+						paymentsOpen
+							? 'Pausing stops new moves being paid for. Queued moves still run.'
+							: 'Nobody can pay for a move. The stage screen shows Paused instead of the QR code.'
+					}
+				>
+					{isOwner && !wrongChain && (
+						<Button
+							variant={paymentsOpen ? 'secondary' : 'primary'}
+							disabled={busy !== null}
+							onClick={() => act('payments', (c) => c.configureRobot(data.robotId, { publicCommands: !paymentsOpen }))}
+						>
+							{busy === 'payments' ? 'Confirm in your wallet…' : paymentsOpen ? 'Pause payments' : 'Resume payments'}
+						</Button>
+					)}
+				</Control>
+				{actionError && <p className="mt-3 text-sm text-danger">{actionError}</p>}
 				{!isOwner && (
-					<p className="mt-3 text-xs text-ink-muted">
-						{address
-							? `Only the owner can pause payments${isOperator.data ? '. This wallet is an operator' : ''}. Owner: `
-							: 'Connect the owner’s wallet to pause payments. Owner: '}
-						<WalletAddress address={data.robot.owner} />
+					<p className="mt-4 text-xs text-ink-muted">
+						{!address
+							? 'Connect the owner’s or an operator’s wallet to use these. '
+							: canPauseQueue
+								? 'This wallet is an operator, so it can pause the queue. Only the owner can pause payments. '
+								: 'Only the owner and operators can pause the queue, and only the owner payments. '}
+						Owner: <WalletAddress address={data.robot.owner} />
 					</p>
 				)}
 			</section>
@@ -154,7 +182,7 @@ export default function ConsolePage({ params }: { params: Promise<{ name: string
 				{pending.length === 0 ? (
 					<p className="text-sm text-ink-muted">Nothing queued.</p>
 				) : (
-					<CommandTable entries={pending} menu={data.menu} now={now} firstLabel={s?.robotOnline ? 'Now' : undefined} />
+					<CommandTable entries={pending} menu={data.menu} now={now} firstLabel={s?.robotOnline && !paused ? 'Now' : undefined} />
 				)}
 				{queueError && <p className="mt-2 text-sm text-danger">Chain: {queueError}</p>}
 			</section>
@@ -223,6 +251,20 @@ function CommandTable({
 					})}
 				</tbody>
 			</table>
+		</div>
+	);
+}
+
+function Control({ on, title, detail, children }: { on: boolean; title: string; detail: string; children?: ReactNode }) {
+	return (
+		<div className="flex flex-wrap items-center justify-between gap-3">
+			<div className="min-w-0 flex-1">
+				<p className="flex items-center gap-2 font-medium">
+					<Dot on={on} /> {title}
+				</p>
+				<p className="mt-0.5 text-sm text-ink-soft">{detail}</p>
+			</div>
+			{children}
 		</div>
 	);
 }

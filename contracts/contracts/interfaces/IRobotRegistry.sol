@@ -41,6 +41,7 @@ interface IRobotRegistry {
         uint8 battery
     );
     event PublicCommandsSet(bytes32 indexed robotId, bool enabled);
+    event QueuePausedSet(bytes32 indexed robotId, address indexed by, bool paused);
 
     function registerRobot(bytes32 robotId, string calldata name, string calldata robotType, bytes32 storageRoot) external;
     function updateRobot(bytes32 robotId, bytes32 storageRoot, bool active) external;
@@ -53,6 +54,8 @@ interface IRobotRegistry {
     function reportStatus(bytes32 robotId, bool online, bool robotConnected, uint8 battery) external;
     function getStatus(bytes32 robotId) external view returns (RobotStatus memory);
     function setPublicCommands(bytes32 robotId, bool enabled) external;
+    function setQueuePaused(bytes32 robotId, bool paused) external;
+    function isQueuePaused(bytes32 robotId) external view returns (bool);
     function isAuthorized(bytes32 robotId, address caller) external view returns (bool);
     function getRobot(bytes32 robotId) external view returns (Robot memory);
     function getCommandPrice(bytes32 robotId) external view returns (uint256);
