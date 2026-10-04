@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { numberToHex } from 'viem';
 import { useConnection, useDisconnect, useSwitchChain } from 'wagmi';
 import { Button } from '@0gfoundation/0g-ui/shell';
 import { Notice } from '@/components/notice';
@@ -13,6 +14,15 @@ const NO_ANSWER_MS = 20_000;
 
 const chain = defaultNetwork.chain;
 const recommended = defaultNetwork.metaMaskOnly ? 'MetaMask' : null;
+
+/** What a wallet needs to add the network */
+const addChainParams = {
+	chainId: numberToHex(chain.id),
+	chainName: chain.name,
+	nativeCurrency: chain.nativeCurrency,
+	rpcUrls: [...chain.rpcUrls.default.http],
+	blockExplorerUrls: chain.blockExplorers ? [chain.blockExplorers.default.url] : []
+};
 
 /**
  * Moves the wallet onto the network the dashboard uses. A WalletConnect
@@ -69,7 +79,20 @@ export function SwitchNetwork() {
 		setNoAnswer(false);
 		setAsking(true);
 		try {
-			await switchChain.mutateAsync({ chainId: chain.id });
+			if (connector?.type === 'metaMask' && isTouch) {
+				// wagmi's switch tries wallet_switchEthereumChain first, which fails
+				// in the app for a network it lacks ("Request failed"), then sends
+				// the add, whose own deep link fires while the user is away and
+				// waits in the browser as a stray "open MetaMask" prompt. The add
+				// alone adds and switches in one prompt, or only switches if the
+				// network is there. MetaMask's SDK reports the new chain to wagmi.
+				const provider = (await connector.getProvider()) as {
+					request: (args: { method: string; params: unknown[] }) => Promise<unknown>;
+				};
+				await provider.request({ method: 'wallet_addEthereumChain', params: [addChainParams] });
+			} else {
+				await switchChain.mutateAsync({ chainId: chain.id });
+			}
 		} catch (err) {
 			const e = err as { shortMessage?: string; message?: string };
 			setError(e.shortMessage ?? e.message ?? String(err));
