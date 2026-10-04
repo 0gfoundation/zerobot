@@ -1,6 +1,6 @@
 import { createConfig, http, type Transport } from 'wagmi';
 import { injected, metaMask, walletConnect } from 'wagmi/connectors';
-import { supportedChains } from './networks';
+import { walletChains } from './networks';
 
 const NAME = 'Zerobot';
 const DESCRIPTION = 'Pay to make real robots move, on 0G.';
@@ -25,8 +25,8 @@ const projectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID;
  *   modal draws the QR and the per-wallet links, so its own modal is off.
  */
 export const wagmiConfig = createConfig({
-	chains: supportedChains,
-	transports: Object.fromEntries(supportedChains.map((c) => [c.id, http()])) as Record<number, Transport>,
+	chains: walletChains,
+	transports: Object.fromEntries(walletChains.map((c) => [c.id, http()])) as Record<number, Transport>,
 	connectors: [
 		metaMask({
 			dapp: { name: NAME, url: origin() },
