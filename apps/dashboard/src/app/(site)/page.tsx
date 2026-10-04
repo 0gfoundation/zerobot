@@ -332,7 +332,10 @@ function RobotRow({
 				)}
 				{hasMenu && (
 					<>
-						<Link href={`/robots/${r.name}`} className="ml-2 text-sm underline">
+						<Link href={`/robots/${r.name}/console`} className="ml-2 text-sm underline">
+							Console
+						</Link>
+						<Link href={`/robots/${r.name}`} className="text-sm underline">
 							Public page
 						</Link>
 						<Link href={`/robots/${r.name}/stage`} className="text-sm underline">
