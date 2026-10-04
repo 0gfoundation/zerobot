@@ -7,9 +7,11 @@ import { useQuery } from '@tanstack/react-query';
 import { CommandStatus } from '@0g-foundation/zerobot-sdk';
 import { Button } from '@0gfoundation/0g-ui/shell';
 import { MoveIcon } from '@/components/move-icon';
+import { DirectControl } from '@/components/direct-control';
 import { SwitchNetwork } from '@/components/switch-network';
 import { WalletAddress } from '@/components/wallet-address';
 import { errorMessage, readClient, walletClient } from '@/lib/chain';
+import { LOCAL_MODE } from '@/lib/mode';
 import { defaultNetwork } from '@/lib/networks';
 import { useQueue, type QueueEntry } from '@/lib/use-queue';
 import { useQueuePaused } from '@/lib/use-queue-paused';
@@ -45,6 +47,9 @@ export default function ConsolePage({ params }: { params: Promise<{ name: string
 	/** Which control is waiting on the wallet */
 	const [busy, setBusy] = useState<'payments' | 'queue' | null>(null);
 	const [actionError, setActionError] = useState<string | null>(null);
+	const [controlLog, setControlLog] = useState<string[]>([]);
+	const addControlLog = (line: string) =>
+		setControlLog((l) => [...l.slice(-199), `[${new Date().toLocaleTimeString()}] ${line}`]);
 	const [now, setNow] = useState(() => Date.now());
 	useEffect(() => {
 		const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -177,6 +182,21 @@ export default function ConsolePage({ params }: { params: Promise<{ name: string
 					</p>
 				)}
 			</section>
+
+			{/* Straight to the robot over WebRTC, without the chain. Anyone on the
+			    robot's network with its device key can drive it, so no wallet is
+			    needed here: the key is the gate. Local mode only, since a hosted
+			    server can't reach the robot. */}
+			{LOCAL_MODE && (
+				<>
+					<DirectControl name={data.robot.name} robotType={data.robot.robotType} log={addControlLog} />
+					{controlLog.length > 0 && (
+						<div className="h-32 overflow-y-auto rounded-xl bg-ink/5 p-3 font-mono text-xs whitespace-pre-wrap">
+							{controlLog.join('\n')}
+						</div>
+					)}
+				</>
+			)}
 
 			<section className={card}>
 				<h2 className={heading}>Queue ({pending.length})</h2>
