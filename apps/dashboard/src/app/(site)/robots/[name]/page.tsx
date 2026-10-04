@@ -34,7 +34,7 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 	const { address, chainId } = useConnection();
 	const { data: wallet } = useWalletClient();
 	const balance = useBalance({ address, chainId: defaultNetwork.chain.id, query: { refetchInterval: 4000 } });
-	const { entries } = useQueue(robot.data?.robotId, 50);
+	const { entries } = useQueue(robot.data?.robotId, { history: 50 });
 	const status = useRobotStatus(robot.data?.robotId);
 	const queuePaused = useQueuePaused(robot.data?.robotId).data ?? false;
 	// Only take payment when the operator and robot are both up, or the move

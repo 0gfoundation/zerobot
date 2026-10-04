@@ -37,7 +37,7 @@ export default function ConsolePage({ params }: { params: Promise<{ name: string
 	const robot = useRobot(name, { live: true });
 	const data = robot.data;
 	const status = useRobotStatus(data?.robotId);
-	const { entries, error: queueError } = useQueue(data?.robotId, 30);
+	const { entries, error: queueError } = useQueue(data?.robotId, { history: 30 });
 	const queuePaused = useQueuePaused(data?.robotId);
 	const { address, chainId } = useConnection();
 	const { data: wallet } = useWalletClient();
