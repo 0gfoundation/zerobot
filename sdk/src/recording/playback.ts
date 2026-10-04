@@ -24,7 +24,7 @@ interface RecordingRun {
   offsetMs?: number;
   durationMs: number;
   streams: Record<string, RecordedMessage[]>;
-  events: Array<{ t: number; kind: string; name?: string }>;
+  events: Array<{ t: number; kind: string; name?: string; data?: any }>;
 }
 
 export interface RecordingFile {
@@ -229,6 +229,23 @@ function alignRuns(runs: RecordingRun[]): { lags: number[]; reference: number } 
   return { lags: raw.map((lag, i) => (signals[i] ? lag - raw[reference] : 0)), reference };
 }
 
+/** Playback runs on this long past the robot's "done", so it's seen to settle */
+const END_PAD_MS = 500;
+
+/**
+ * When the robot reported the command done, as the median over runs of each
+ * run's first reply after the send. Recordings run a fixed window that can
+ * outlast the move by seconds, so playback ends here instead. Undefined for
+ * recordings without replies.
+ */
+function doneAt(runs: RecordingRun[]): number | undefined {
+  const replies = runs
+    .map((run) => run.events.find((e) => e.kind === "response" && e.t > 0)?.t)
+    .filter((t): t is number => t !== undefined)
+    .sort((a, b) => a - b);
+  return replies.length > 0 ? replies[Math.floor(replies.length / 2)] : undefined;
+}
+
 /** How far a joint sample may land from its run's rhythm before it counts as late */
 const RHYTHM_TOLERANCE_MS = 25;
 
@@ -284,6 +301,8 @@ export function buildTimeline(file: RecordingFile): Timeline {
 
   const body = runs.length > 0 ? bodySamples(runs[reference]).map((s) => ({ ...s, t: s.t - lags[reference] })) : [];
   const times = [...joints.map((s) => s.t), ...body.map((s) => s.t)];
+  const recordedEnd = Math.max(...runs.map((r) => r.durationMs), ...times, 0);
+  const done = doneAt(runs);
 
   return {
     command: file.command,
@@ -291,7 +310,8 @@ export function buildTimeline(file: RecordingFile): Timeline {
     // Playback starts when the command is sent. Samples from before it stay
     // in the timeline so the opening pose interpolates from the resting stance.
     startMs: 0,
-    endMs: Math.max(...runs.map((r) => r.durationMs), ...times, 0),
+    // Trimmed to the robot's "done", not the recording window's idle tail
+    endMs: done === undefined ? recordedEnd : Math.min(recordedEnd, done + END_PAD_MS),
     joints,
     body
   };
