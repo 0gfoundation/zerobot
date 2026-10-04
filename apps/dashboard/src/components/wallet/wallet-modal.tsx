@@ -230,8 +230,12 @@ function WalletModal({ onClose }: { onClose: () => void }) {
 		rememberWcWallet(null);
 		await dropMetaMaskLink();
 		if (connector.type === 'metaMask' && isTouch) metaMaskPending.current = true;
+		// Asking for the network too would send MetaMask on a phone a second
+		// request as soon as the user returns from approving the connection, and
+		// open the app again unasked. The page's switch step asks with a tap.
+		const chainId = connector.type === 'metaMask' && isTouch ? undefined : defaultNetwork.chain.id;
 		connect.mutate(
-			{ connector, chainId: defaultNetwork.chain.id },
+			{ connector, chainId },
 			{
 				onError: (err) => {
 					metaMaskPending.current = false;
