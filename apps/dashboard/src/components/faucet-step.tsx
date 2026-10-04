@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { formatEther } from 'viem';
-import { useSignMessage } from 'wagmi';
+import { useConnection, useSignMessage } from 'wagmi';
 import { useQuery } from '@tanstack/react-query';
 import { Button, ButtonLink } from '@0gfoundation/0g-ui/shell';
 import { WalletAddress } from '@/components/wallet-address';
@@ -11,6 +11,8 @@ import { defaultNetwork } from '@/lib/networks';
 
 const PUBLIC_FAUCET_URL = 'https://faucet.0g.ai';
 const POLL_MS = 2000;
+/** Waiting longer than this on the wallet or the faucet, and the step offers another way */
+const STALL_MS = 45_000;
 
 type State =
 	| { kind: 'idle'; note?: string }
@@ -21,10 +23,32 @@ type State =
 	/** The faucet can't send to this wallet now; the public faucet may not either */
 	| { kind: 'refused'; message: string }
 	/** Something on our side or the faucet's: fall back to the public faucet */
-	| { kind: 'unavailable'; message: string };
+	| { kind: 'unavailable'; message: string }
+	/** The user chose the public faucet */
+	| { kind: 'manual' };
 
 function storageKey(address: string) {
 	return `zerobot:faucet:${address.toLowerCase()}`;
+}
+
+/**
+ * Tell the server's log what went wrong in the wallet, since a phone's
+ * console is out of reach. Best-effort, and carries no address.
+ */
+function report(stage: string, connector: string | undefined, err?: unknown) {
+	const e = err as { name?: string; code?: unknown; shortMessage?: string; message?: string } | undefined;
+	const body = JSON.stringify({
+		stage,
+		connector,
+		name: e?.name,
+		code: e?.code,
+		message: (e?.shortMessage ?? e?.message ?? '').slice(0, 300)
+	});
+	try {
+		navigator.sendBeacon('/api/faucet/report', new Blob([body], { type: 'application/json' }));
+	} catch {
+		// Nowhere to report to
+	}
 }
 
 function isRejection(err: unknown): boolean {
@@ -45,7 +69,24 @@ export function FaucetStep({ address, needed }: { address: `0x${string}`; needed
 		staleTime: Infinity
 	});
 	const signMessage = useSignMessage();
+	const { connector } = useConnection();
 	const [state, setState] = useState<State>({ kind: 'idle' });
+	// Waiting on the wallet's signature or the faucet's transfer for too long
+	const [stalled, setStalled] = useState(false);
+	// Bumped by each request, so a retry restarts the stall timer
+	const [attempt, setAttempt] = useState(0);
+	const waiting = state.kind === 'signing' || state.kind === 'sending';
+	useEffect(() => {
+		setStalled(false);
+		if (!waiting) return;
+		const timer = setTimeout(() => {
+			setStalled(true);
+			report(state.kind === 'signing' ? 'sign-stalled' : 'transfer-stalled', connector?.type);
+		}, STALL_MS);
+		return () => clearTimeout(timer);
+		// Restart only when the wait starts or ends, not on each poll
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [waiting, state.kind, attempt]);
 
 	// A transfer from before a reload (iOS can reload the tab while the user is in their wallet)
 	useEffect(() => {
@@ -94,13 +135,16 @@ export function FaucetStep({ address, needed }: { address: `0x${string}`; needed
 	}, [transferId, address]);
 
 	async function request() {
+		setAttempt((a) => a + 1);
 		setState({ kind: 'signing' });
 		const issuedAt = Date.now();
 		let signature: `0x${string}`;
 		try {
 			signature = await signMessage.mutateAsync({ message: faucetMessage(address, issuedAt) });
 		} catch (err) {
-			return setState({ kind: 'idle', note: isRejection(err) ? 'You cancelled in your wallet. Nothing was sent.' : 'Your wallet couldn’t sign. Try again.' });
+			if (isRejection(err)) return setState({ kind: 'idle', note: 'You cancelled in your wallet. Nothing was sent.' });
+			report('sign-failed', connector?.type, err);
+			return setState({ kind: 'idle', note: 'Your wallet couldn’t sign. Try again, or use the public faucet.' });
 		}
 		setState({ kind: 'requesting' });
 		try {
@@ -143,7 +187,7 @@ export function FaucetStep({ address, needed }: { address: `0x${string}`; needed
 	const explorer = defaultNetwork.chain.blockExplorers?.default.url;
 
 	if (enabled.isPending) return null;
-	if (!enabled.data || state.kind === 'unavailable' || state.kind === 'refused') {
+	if (!enabled.data || state.kind === 'unavailable' || state.kind === 'refused' || state.kind === 'manual') {
 		return (
 			<>
 				{state.kind === 'unavailable' && <p className="mb-2 text-sm text-ink-soft">{state.message}</p>}
@@ -168,6 +212,13 @@ export function FaucetStep({ address, needed }: { address: `0x${string}`; needed
 						</a>
 					</>
 				)}
+				{state.kind === 'sending' && stalled && (
+					<>
+						{' '}
+						It&apos;s taking longer than usual.{' '}
+						<PublicFaucetLink onClick={() => setState({ kind: 'manual' })} />
+					</>
+				)}
 			</p>
 		);
 	}
@@ -179,15 +230,29 @@ export function FaucetStep({ address, needed }: { address: `0x${string}`; needed
 				show it&apos;s yours. Signing is free.
 			</p>
 			<div className="mt-3">
-				<Button size="small" onClick={request} disabled={state.kind !== 'idle'}>
-					{state.kind === 'signing'
+				<Button
+					size="small"
+					onClick={request}
+					disabled={state.kind === 'requesting' || (state.kind === 'signing' && !stalled)}
+				>
+					{state.kind === 'signing' && !stalled
 						? 'Sign in your wallet…'
-						: state.kind === 'requesting'
-							? 'Asking the faucet…'
-							: `Get ${FAUCET_AMOUNT} testnet 0G`}
+						: state.kind === 'signing'
+							? 'Try again'
+							: state.kind === 'requesting'
+								? 'Asking the faucet…'
+								: `Get ${FAUCET_AMOUNT} testnet 0G`}
 				</Button>
 			</div>
+			{state.kind === 'signing' && stalled && (
+				<p className="mt-2 text-sm text-ink-soft">
+					Your wallet hasn&apos;t sent the signature back. Open it to check for the request, or try again.
+				</p>
+			)}
 			{state.kind === 'idle' && state.note && <p className="mt-2 text-sm text-ink-soft">{state.note}</p>}
+			<p className="mt-2 text-sm text-ink-soft">
+				<PublicFaucetLink onClick={() => setState({ kind: 'manual' })} />
+			</p>
 		</>
 	);
 }
@@ -198,6 +263,14 @@ function forget(address: string) {
 	} catch {
 		// Nothing stored
 	}
+}
+
+function PublicFaucetLink({ onClick }: { onClick: () => void }) {
+	return (
+		<button type="button" onClick={onClick} className="cursor-pointer underline">
+			Or use the public faucet
+		</button>
+	);
 }
 
 /** The public faucet, for when this server can't send 0G itself */
