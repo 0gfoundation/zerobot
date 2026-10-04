@@ -192,24 +192,76 @@ function motionLag(a: number[][], b: number[][]): number {
   return best * LAG_STEP_MS;
 }
 
+/** A longer gap in a run's ~20 Hz body stream means Wi-Fi held it up, then sent the backlog at once */
+const MAX_BODY_GAP_MS = 200;
+
+/** The longest gap in a run's body stream after the command is sent */
+function longestBodyGap(run: RecordingRun): number {
+  const ts = (run.streams[SPORT_STATE] ?? []).map((m) => m.t).filter((t) => t >= 0);
+  return ts.slice(1).reduce((max, t, i) => Math.max(max, t - ts[i]), 0);
+}
+
 /**
  * The robot doesn't always start a trick the same time after the command
  * (the first run of a session can lag by ~0.5 s), and merging by send time
  * then pairs one run's body with other runs' legs. Find each run's delay
  * from its 20 Hz body motion, relative to the most typical run, which also
  * supplies the body pose. Runs whose body barely moves keep a delay of 0.
+ *
+ * A run whose body stream stalled replays the stalled stretch in a burst
+ * (Dance2: two seconds of motion, a 80° turn among it, in a tenth of a
+ * second), so delays are measured against a run without stalls, and the
+ * body comes from the stall-free run nearest the median delay.
  */
 function alignRuns(runs: RecordingRun[]): { lags: number[]; reference: number } {
   const signals = runs.map(motionSignal);
   const moving = signals.flatMap((s, i) => (s ? [i] : []));
   if (moving.length < 2) return { lags: runs.map(() => 0), reference: 0 };
+  const steady = moving.filter((i) => longestBodyGap(runs[i]) <= MAX_BODY_GAP_MS);
+  const candidates = steady.length > 0 ? steady : moving;
 
-  // Delays against the first moving run, then re-based on the run with the median delay
-  const first = signals[moving[0]]!;
-  const raw = signals.map((s, i) => (s && i !== moving[0] ? motionLag(s, first) : 0));
-  const byLag = [...moving].sort((a, b) => raw[a] - raw[b]);
-  const reference = byLag[Math.floor(byLag.length / 2)];
+  // Delays against a steady run, then re-based on the steady run nearest the median delay
+  const base = candidates[0];
+  const raw = signals.map((s, i) => (s && i !== base ? motionLag(s, signals[base]!) : 0));
+  const lagsSorted = moving.map((i) => raw[i]).sort((a, b) => a - b);
+  const median = lagsSorted[Math.floor(lagsSorted.length / 2)];
+  const reference = candidates.reduce((best, i) => (Math.abs(raw[i] - median) < Math.abs(raw[best] - median) ? i : best));
   return { lags: raw.map((lag, i) => (signals[i] ? lag - raw[reference] : 0)), reference };
+}
+
+/** How far a joint sample may land from its run's rhythm before it counts as late */
+const RHYTHM_TOLERANCE_MS = 25;
+
+/**
+ * A run's joint samples, without the ones that arrived late. The robot sends
+ * them on a steady ~1 s rhythm, but they're stamped on arrival, so one held
+ * up on the network carries an older pose at a later time and makes the
+ * merged legs snap. The run's own period and phase come from its samples:
+ * the median gap, and the phase most samples agree on.
+ */
+export function onRhythm(messages: RecordedMessage[]): RecordedMessage[] {
+  if (messages.length < 4) return messages;
+  const gaps = messages
+    .slice(1)
+    .map((m, i) => m.t - messages[i].t)
+    .filter((g) => g > 500 && g < 1500)
+    .sort((a, b) => a - b);
+  if (gaps.length < 3) return messages;
+  const period = gaps[Math.floor(gaps.length / 2)];
+  const phase = (t: number) => ((t % period) + period) % period;
+  const apart = (a: number, b: number) => {
+    const d = Math.abs(a - b);
+    return Math.min(d, period - d);
+  };
+  const phases = messages.map((m) => phase(m.t));
+  // The phase with the most samples near it, measured round the circle
+  let best = phases[0];
+  let bestCount = -1;
+  for (const p of phases) {
+    const count = phases.filter((q) => apart(p, q) <= RHYTHM_TOLERANCE_MS).length;
+    if (count > bestCount) [best, bestCount] = [p, count];
+  }
+  return messages.filter((_, i) => apart(phases[i], best) <= RHYTHM_TOLERANCE_MS);
 }
 
 export function buildTimeline(file: RecordingFile): Timeline {
@@ -221,7 +273,7 @@ export function buildTimeline(file: RecordingFile): Timeline {
 
   const joints: JointSample[] = runs
     .flatMap((run, i) =>
-      (run.streams[LOW_STATE] ?? []).map((m) => ({
+      onRhythm(run.streams[LOW_STATE] ?? []).map((m) => ({
         t: m.t - lags[i],
         q: (m.data?.motor_state ?? []).slice(0, motorCount).map((s: { q: number }) => s.q),
         run: i
