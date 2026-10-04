@@ -192,23 +192,40 @@ function motionLag(a: number[][], b: number[][]): number {
   return best * LAG_STEP_MS;
 }
 
+/** A longer gap in a run's ~20 Hz body stream means Wi-Fi held it up, then sent the backlog at once */
+const MAX_BODY_GAP_MS = 200;
+
+/** The longest gap in a run's body stream after the command is sent */
+function longestBodyGap(run: RecordingRun): number {
+  const ts = (run.streams[SPORT_STATE] ?? []).map((m) => m.t).filter((t) => t >= 0);
+  return ts.slice(1).reduce((max, t, i) => Math.max(max, t - ts[i]), 0);
+}
+
 /**
  * The robot doesn't always start a trick the same time after the command
  * (the first run of a session can lag by ~0.5 s), and merging by send time
  * then pairs one run's body with other runs' legs. Find each run's delay
  * from its 20 Hz body motion, relative to the most typical run, which also
  * supplies the body pose. Runs whose body barely moves keep a delay of 0.
+ *
+ * A run whose body stream stalled replays the stalled stretch in a burst
+ * (Dance2: two seconds of motion, a 80° turn among it, in a tenth of a
+ * second), so delays are measured against a run without stalls, and the
+ * body comes from the stall-free run nearest the median delay.
  */
 function alignRuns(runs: RecordingRun[]): { lags: number[]; reference: number } {
   const signals = runs.map(motionSignal);
   const moving = signals.flatMap((s, i) => (s ? [i] : []));
   if (moving.length < 2) return { lags: runs.map(() => 0), reference: 0 };
+  const steady = moving.filter((i) => longestBodyGap(runs[i]) <= MAX_BODY_GAP_MS);
+  const candidates = steady.length > 0 ? steady : moving;
 
-  // Delays against the first moving run, then re-based on the run with the median delay
-  const first = signals[moving[0]]!;
-  const raw = signals.map((s, i) => (s && i !== moving[0] ? motionLag(s, first) : 0));
-  const byLag = [...moving].sort((a, b) => raw[a] - raw[b]);
-  const reference = byLag[Math.floor(byLag.length / 2)];
+  // Delays against a steady run, then re-based on the steady run nearest the median delay
+  const base = candidates[0];
+  const raw = signals.map((s, i) => (s && i !== base ? motionLag(s, signals[base]!) : 0));
+  const lagsSorted = moving.map((i) => raw[i]).sort((a, b) => a - b);
+  const median = lagsSorted[Math.floor(lagsSorted.length / 2)];
+  const reference = candidates.reduce((best, i) => (Math.abs(raw[i] - median) < Math.abs(raw[best] - median) ? i : best));
   return { lags: raw.map((lag, i) => (signals[i] ? lag - raw[reference] : 0)), reference };
 }
 
