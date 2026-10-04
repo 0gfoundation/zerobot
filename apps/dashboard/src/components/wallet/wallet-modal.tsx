@@ -327,7 +327,7 @@ function WalletModal({ onClose }: { onClose: () => void }) {
 				// A click on the backdrop lands on the dialog element itself
 				if (e.target === dialog.current) close();
 			}}
-			className="m-auto flex max-h-[90dvh] w-[26rem] max-w-[90vw] flex-col rounded-[32px] border border-line bg-bg p-0 text-ink shadow-xl backdrop:bg-ink/24 [&:not([open])]:hidden"
+			className="m-auto flex max-h-[90vh] w-[26rem] supports-[height:100dvh]:max-h-[90dvh] max-w-[90vw] flex-col rounded-[32px] border border-line bg-bg p-0 text-ink shadow-xl backdrop:bg-ink/24 [&:not([open])]:hidden"
 		>
 			<div className="flex items-center justify-between gap-3 px-6 pt-6 pb-4">
 				<div className="flex min-w-0 items-center gap-3">
@@ -347,7 +347,10 @@ function WalletModal({ onClose }: { onClose: () => void }) {
 				</button>
 			</div>
 
-			<div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+			{/* flex-auto, not flex-1: older WebKit (Safari, and Chrome on iOS) collapses a
+			    zero-basis child of a column whose height comes from its content, which left
+			    only the title and a sliver of the first wallet visible */}
+			<div className="min-h-0 flex-auto overflow-y-auto px-6 pb-6">
 				{view === 'qr' ? (
 					<div className="flex flex-col items-center gap-4">
 						{wcUri ? (
