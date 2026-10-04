@@ -18,6 +18,10 @@
  *   ROBOT_IP=192.168.123.18 npx tsx record-commands.ts --robot g1
  *   ROBOT_IP=192.168.123.18 npx tsx record-commands.ts --robot go2 --commands Hello,Dance1
  *   ROBOT_IP=192.168.123.18 npx tsx record-commands.ts --robot go2 --commands Hello --repeat 10
+ *   ROBOT_IP=192.168.123.18 npx tsx record-commands.ts --robot go2 --commands Hello --offsets 0,700 --append
+ *
+ * An unsaved warm-up run goes first in each session (`--no-warmup` skips it):
+ * the first run has come out of step in every recording so far.
  *   ROBOT_IP=192.168.123.18 npx tsx record-commands.ts --robot g1 --commands Walk,Handshake
  */
 import "dotenv/config";
@@ -58,6 +62,14 @@ const SETTLE_TIME = parseInt(getArg("settle", "2000"));
 const EXTRA_TIME = parseInt(getArg("extra", "1500"));
 const COMMANDS_FILTER = getArg("commands", "all");
 const REPEAT = parseInt(getArg("repeat", "1"));
+// Explicit offsets, e.g. to fill the slots of runs dropped from a recording
+const OFFSETS = args.includes("--offsets")
+  ? getArg("offsets", "").split(",").map((v) => parseInt(v.trim()))
+  : null;
+const APPEND = args.includes("--append");
+// The first run of a session has come out of step in every recording (late,
+// early, or with its joint samples off rhythm), so an unsaved run goes first
+const WARMUP = !args.includes("--no-warmup");
 const CONFIRM = !args.includes("--yes");
 const RESET_MODE = getArg("reset", "stand");
 const MOVE_DURATION = parseInt(getArg("move-ms", "3000"));
@@ -66,6 +78,7 @@ if (
   !ROBOT_TYPE ||
   !["go2", "g1"].includes(ROBOT_TYPE) ||
   !(REPEAT >= 1) ||
+  (OFFSETS !== null && (OFFSETS.length === 0 || OFFSETS.some((o) => !(o >= 0 && o < 1000)))) ||
   !(MOVE_DURATION > 0) ||
   !["stand", "lie"].includes(RESET_MODE) ||
   (RESET_MODE === "lie" && ROBOT_TYPE !== "go2")
@@ -76,6 +89,10 @@ if (
   console.log("  --robot <go2|g1>        Robot type (required)");
   console.log("  --commands <name,...>    Record specific commands only");
   console.log("  --repeat <n>            Runs per command, staggered against the ~1 Hz joint samples (default: 1)");
+  console.log("  --offsets <ms,...>      Record runs at exactly these offsets (0-999) instead of --repeat's,");
+  console.log("                          e.g. to fill the slots of runs dropped from a recording");
+  console.log("  --append                Add the runs to the existing recording instead of replacing it");
+  console.log("  --no-warmup             Skip the unsaved warm-up run before the first saved run");
   console.log("  --yes                   Don't wait for Enter before each run");
   console.log("  --reset <stand|lie>     Before each run: recovery stand, or (Go2 only) lie down and stand up");
   console.log("                          for a consistent starting stance, ~3s slower (default: stand)");
@@ -568,6 +585,7 @@ async function main(): Promise<void> {
 
     // Record each command
     let quit = false;
+    let warmedUp = false;
     for (const cmd of commandsToRecord) {
       if (quit) break;
       const outFile = path.join(
@@ -575,24 +593,43 @@ async function main(): Promise<void> {
         `${cmd.name.toLowerCase()}.json`,
       );
 
-      if (COMMANDS_FILTER === "all" && fs.existsSync(outFile)) {
+      if (COMMANDS_FILTER === "all" && !APPEND && fs.existsSync(outFile)) {
         console.log(`Skipping ${cmd.name} (already recorded)`);
         continue;
       }
 
-      console.log(`Recording ${cmd.name} (estimated ${cmd.estimatedDurationMs}ms, ${REPEAT} run${REPEAT > 1 ? "s" : ""})...`);
+      const offsets =
+        OFFSETS ?? Array.from({ length: REPEAT }, (_, run) => Math.round((run * JOINT_SAMPLE_PERIOD_MS) / REPEAT));
+      console.log(`Recording ${cmd.name} (estimated ${cmd.estimatedDurationMs}ms, ${offsets.length} run${offsets.length > 1 ? "s" : ""})...`);
 
-      const result: CommandRecording = {
+      let result: CommandRecording = {
         robot: ROBOT_TYPE,
         command: cmd.name,
         estimatedDurationMs: cmd.estimatedDurationMs,
         motorCount,
         runs: [],
       };
+      if (APPEND && fs.existsSync(outFile)) {
+        const existing = JSON.parse(fs.readFileSync(outFile, "utf8")) as CommandRecording;
+        if (existing.command !== cmd.name || existing.robot !== ROBOT_TYPE || !Array.isArray(existing.runs)) {
+          throw new Error(`${path.basename(outFile)} isn't a ${ROBOT_TYPE} ${cmd.name} recording with runs, so nothing was appended.`);
+        }
+        result = existing;
+        console.log(`  Appending to ${existing.runs.length} existing runs (offsets ${existing.runs.map((r) => r.offsetMs).join(", ")}ms)`);
+      }
 
-      for (let run = 0; run < REPEAT; run++) {
-        const offsetMs = Math.round((run * JOINT_SAMPLE_PERIOD_MS) / REPEAT);
-        const label = REPEAT > 1 ? `Run ${run + 1}/${REPEAT} (offset ${offsetMs}ms)` : cmd.name;
+      // A warm-up run first, once per session, then the runs that are saved
+      const plan = [
+        ...(WARMUP && !warmedUp ? [{ offsetMs: 0, warmup: true }] : []),
+        ...offsets.map((offsetMs) => ({ offsetMs, warmup: false })),
+      ];
+      for (const [i, { offsetMs, warmup }] of plan.entries()) {
+        const saved = plan.slice(0, i).filter((p) => !p.warmup).length;
+        const label = warmup
+          ? "Warm-up run (not saved)"
+          : offsets.length > 1
+            ? `Run ${saved + 1}/${offsets.length} (offset ${offsetMs}ms)`
+            : cmd.name;
 
         const battery = batteryPercent();
         const status = battery !== null ? `${label}, battery ${battery}%` : label;
@@ -658,6 +695,13 @@ async function main(): Promise<void> {
           throw new Error(
             `No data on ${missing.join(", ")} while recording ${label} of ${cmd.name}, so it was not saved. The stream stopped mid-run.`,
           );
+        }
+
+        if (warmup) {
+          warmedUp = true;
+          console.log(`  Warm-up done, not saved`);
+          await exitPose();
+          continue;
         }
 
         result.runs.push({
