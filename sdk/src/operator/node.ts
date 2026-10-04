@@ -1,7 +1,8 @@
 import { EventEmitter } from "eventemitter3";
-import { NonceManager, type Contract } from "ethers";
+import { NonceManager, type Contract, type ContractTransactionResponse } from "ethers";
 import { Go2Connection } from "../robot/connection.js";
-import { ChainClient } from "../chain/client.js";
+import { RtcTopic } from "../robot/constants.js";
+import { ChainClient, UNKNOWN_BATTERY } from "../chain/client.js";
 import { ChainListener } from "../chain/listener.js";
 import { waitForReceipt } from "../chain/wait.js";
 import { GO2_SPORT_SCHEMAS } from "../command/schemas/go2.js";
@@ -11,7 +12,7 @@ import { GO2_SPORT_SCHEMAS } from "../command/schemas/go2.js";
 // handle other robot types, swap in a registry lookup keyed by robotType.
 const SCHEMA_BY_API_ID = new Map(GO2_SPORT_SCHEMAS.map((s) => [s.apiId, s]));
 import type { RobotConfig } from "../types/robot.js";
-import type { ChainConfig, OnChainCommand } from "../types/chain.js";
+import type { ChainConfig, OnChainCommand, OperatorStatus } from "../types/chain.js";
 import { SportCommand } from "../types/commands.js";
 
 export interface OperatorNodeEvents {
@@ -24,7 +25,18 @@ export interface OperatorNodeEvents {
     success: boolean,
     resultData: string,
   ) => void;
+  /** The robot link came up or went down, or the battery level changed */
+  status: (status: OperatorStatus) => void;
   error: (error: Error) => void;
+}
+
+/**
+ * Where the operator reports its status for pages to read. Swappable so
+ * status can move off-chain (e.g. to a pub/sub network) without touching
+ * the operator.
+ */
+export interface StatusPublisher {
+  publish(robotId: string, status: OperatorStatus): Promise<void>;
 }
 
 export interface OperatorNodeOptions {
@@ -40,7 +52,26 @@ export interface OperatorNodeOptions {
    * nonces, e.g. ones paid for while the operator was restarting. Default 50.
    */
   recoverCount?: number;
+  /**
+   * Where to report status. Defaults to the registry's `reportStatus` on
+   * the operator's own key. `null` turns reporting off.
+   */
+  statusPublisher?: StatusPublisher | null;
+  /** How often to report status when nothing changes, in ms. Default 60000. */
+  statusIntervalMs?: number;
+  /**
+   * How long the robot can go without sending anything before the link
+   * counts as lost and is reconnected, in ms. It streams low state about
+   * once a second. Default 5000.
+   */
+  robotSilenceMs?: number;
 }
+
+/** The link to the robot dropped while a command was running */
+class RobotLinkLost extends Error {}
+
+/** Waits between reconnect attempts, in ms; the last repeats */
+const RECONNECT_BACKOFF_MS = [1000, 2000, 5000, 10_000];
 
 /**
  * Operator node that watches the blockchain for commands and executes them on the robot.
@@ -54,48 +85,68 @@ export interface OperatorNodeOptions {
  * ```
  */
 export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
-  private connection: Go2Connection;
+  private connection: Go2Connection | null = null;
   private client: ChainClient;
   private listener: ChainListener;
   private running = false;
   private allowed: Set<number> | null;
   private settleMs: number;
   private recoverCount: number;
+  private statusPublisher: StatusPublisher | null;
+  private statusIntervalMs: number;
+  private robotSilenceMs: number;
 
   private queue: OnChainCommand[] = [];
   private seen = new Set<bigint>();
   private draining = false;
-  // Receipts are broadcast one at a time, each without waiting for the
-  // previous to confirm. The public RPC takes ~10s to return a receipt, so
-  // waiting would leave the on-chain queue status far behind the robot.
-  // NonceManager counts nonces locally because that RPC's view of the
-  // pending nonce lags too.
-  private receiptDispatcher: Contract;
-  private receipts: Promise<void> = Promise.resolve();
+
+  private robotConnected = false;
+  private battery: number | undefined;
+  private lastRobotMessageAt = 0;
+  private reconnecting = false;
+  private robotWaiters: Array<() => void> = [];
+  private timers: ReturnType<typeof setInterval>[] = [];
+
+  // Receipts and status reports are broadcast one at a time from the same
+  // key, each without waiting for the previous to confirm. The public RPC
+  // takes ~10s to return a receipt, so waiting would leave the on-chain
+  // queue status far behind the robot. NonceManager counts nonces locally
+  // because that RPC's view of the pending nonce lags too.
+  private dispatcherWriter: Contract;
+  private registryWriter: Contract;
+  private sends: Promise<void> = Promise.resolve();
   private confirmations = new Set<Promise<void>>();
 
   /** Command expiry in seconds (matches contract COMMAND_EXPIRY) */
   private static readonly COMMAND_EXPIRY_S = 5 * 60;
 
   constructor(
-    robotConfig: RobotConfig,
+    private robotConfig: RobotConfig,
     chainConfig: ChainConfig,
     private robotId: string,
     options: OperatorNodeOptions = {},
   ) {
     super();
-    this.connection = new Go2Connection(robotConfig);
     this.client = new ChainClient(chainConfig);
     this.listener = new ChainListener(this.client, robotId);
     if (!this.client.signer) {
       throw new Error("OperatorNode: chainConfig needs the wallet of the robot's owner or an operator, to submit receipts");
     }
-    this.receiptDispatcher = this.client.dispatcher.connect(
-      new NonceManager(this.client.signer),
-    ) as Contract;
+    const signer = new NonceManager(this.client.signer);
+    this.dispatcherWriter = this.client.dispatcher.connect(signer) as Contract;
+    this.registryWriter = this.client.registry.connect(signer) as Contract;
     this.allowed = options.allowedApiIds ? new Set(options.allowedApiIds) : null;
     this.settleMs = options.settleMs ?? 1000;
     this.recoverCount = options.recoverCount ?? 50;
+    this.statusPublisher =
+      options.statusPublisher === undefined ? this.chainStatusPublisher() : options.statusPublisher;
+    this.statusIntervalMs = options.statusIntervalMs ?? 60_000;
+    this.robotSilenceMs = options.robotSilenceMs ?? 5000;
+  }
+
+  /** The operator's current view of itself and the robot */
+  get status(): OperatorStatus {
+    return { online: this.running, robotConnected: this.robotConnected, battery: this.battery };
   }
 
   /**
@@ -111,12 +162,18 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
    * or not in `allowedApiIds` get `success=false` receipts and never run.
    * `Move` commands with a `duration_ms` parameter are issued repeatedly for
    * the duration, then halted with `StopMove`.
+   *
+   * If the robot link drops (the channel closes, or the robot sends nothing
+   * for `robotSilenceMs`), the operator reconnects with backoff and the
+   * queue waits. A command the drop interrupted runs again once the robot
+   * is back, rather than failing.
+   *
+   * @throws If the first connection to the robot fails.
    */
   async start(): Promise<void> {
     if (this.running) return;
 
-    // Connect to robot
-    await this.connection.connect();
+    await this.connectRobot();
     this.running = true;
 
     // Listen first, then recover, so a command landing in between is seen
@@ -126,22 +183,112 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     await this.listener.start();
     await this.recoverPending();
 
+    this.timers.push(
+      setInterval(() => this.checkRobot(), 1000),
+      setInterval(() => this.publishStatus(), this.statusIntervalMs),
+    );
+    this.publishStatus();
     this.emit("started");
   }
 
   /**
    * Stop the listener and disconnect the robot. Commands still queued stay
-   * pending on-chain and are picked up by the next `start()`. Idempotent.
+   * pending on-chain and are picked up by the next `start()`. Reports the
+   * operator offline first. Idempotent.
    */
   async stop(): Promise<void> {
+    if (!this.running) return;
     this.running = false;
+    for (const timer of this.timers) clearInterval(timer);
+    this.timers = [];
     this.listener.stop();
     this.queue = [];
     this.seen.clear();
-    await this.receipts;
+    this.robotConnected = false;
+    this.publishStatus();
+    for (const resolve of this.robotWaiters.splice(0)) resolve();
+    await this.sends;
     await Promise.all(this.confirmations);
-    await this.connection.disconnect();
+    await this.dropConnection();
     this.emit("stopped");
+  }
+
+  /** Open a fresh WebRTC connection and subscribe to the robot's low state */
+  private async connectRobot(): Promise<void> {
+    const connection = new Go2Connection(this.robotConfig);
+    connection.on("message", (msg) => {
+      this.lastRobotMessageAt = Date.now();
+      if (msg.topic !== RtcTopic.LOW_STATE) return;
+      const soc = (msg.data as { bms_state?: { soc?: number } } | undefined)?.bms_state?.soc;
+      if (typeof soc === "number" && soc !== this.battery) {
+        this.battery = soc;
+        this.emit("status", this.status);
+      }
+    });
+    connection.on("disconnected", () => {
+      if (connection === this.connection) this.robotLost("Robot connection closed");
+    });
+    await connection.connect();
+    connection.subscribe(RtcTopic.LOW_STATE);
+    this.connection = connection;
+    this.lastRobotMessageAt = Date.now();
+    this.setRobotConnected(true);
+  }
+
+  /** A channel can stay open after the robot has gone quiet, so watch for silence too */
+  private checkRobot(): void {
+    if (this.robotConnected && Date.now() - this.lastRobotMessageAt > this.robotSilenceMs) {
+      this.robotLost(`No data from the robot for ${this.robotSilenceMs / 1000}s`);
+    }
+  }
+
+  private robotLost(reason: string): void {
+    if (!this.robotConnected || !this.running) return;
+    this.emit("error", new Error(`${reason}, reconnecting`));
+    this.setRobotConnected(false);
+    void this.dropConnection();
+    void this.reconnect();
+  }
+
+  private async reconnect(): Promise<void> {
+    if (this.reconnecting) return;
+    this.reconnecting = true;
+    try {
+      for (let attempt = 0; this.running && !this.robotConnected; attempt++) {
+        await sleep(RECONNECT_BACKOFF_MS[Math.min(attempt, RECONNECT_BACKOFF_MS.length - 1)]);
+        if (!this.running) break;
+        try {
+          await this.connectRobot();
+        } catch (err) {
+          await this.dropConnection();
+          this.emit("error", new Error(`Reconnect failed: ${err instanceof Error ? err.message : err}`));
+        }
+      }
+    } finally {
+      this.reconnecting = false;
+    }
+  }
+
+  private async dropConnection(): Promise<void> {
+    const connection = this.connection;
+    this.connection = null;
+    if (!connection) return;
+    connection.removeAllListeners();
+    await connection.disconnect().catch(() => {});
+  }
+
+  private setRobotConnected(connected: boolean): void {
+    if (connected === this.robotConnected) return;
+    this.robotConnected = connected;
+    if (connected) for (const resolve of this.robotWaiters.splice(0)) resolve();
+    this.emit("status", this.status);
+    this.publishStatus();
+  }
+
+  /** Resolves when the robot is connected, or the operator stops */
+  private waitForRobot(): Promise<void> {
+    if (this.robotConnected || !this.running) return Promise.resolve();
+    return new Promise((resolve) => this.robotWaiters.push(resolve));
   }
 
   private async recoverPending(): Promise<void> {
@@ -182,17 +329,22 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     }
   }
 
+  private expired(cmd: OnChainCommand): boolean {
+    return Math.floor(Date.now() / 1000) - Number(cmd.timestamp) > OperatorNode.COMMAND_EXPIRY_S;
+  }
+
   private async handleCommand(cmd: OnChainCommand): Promise<void> {
-    // Check if command has expired
-    const now = Math.floor(Date.now() / 1000);
-    const cmdTime = Number(cmd.timestamp);
-    if (now - cmdTime > OperatorNode.COMMAND_EXPIRY_S) {
-      this.finish(cmd, false, "Command expired");
+    if (this.allowed && !this.allowed.has(cmd.apiId)) {
+      this.finish(cmd, false, "Command not allowed");
       return;
     }
 
-    if (this.allowed && !this.allowed.has(cmd.apiId)) {
-      this.finish(cmd, false, "Command not allowed");
+    // While the robot is away the queue waits, rather than failing
+    // commands people paid for. They still expire.
+    await this.waitForRobot();
+    if (!this.running) return;
+    if (this.expired(cmd)) {
+      this.finish(cmd, false, "Command expired");
       return;
     }
 
@@ -209,10 +361,10 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
         const moveParams = { x: params.x ?? 0, y: params.y ?? 0, z: params.z ?? 0 };
         const endTime = Date.now() + durationMs;
         while (Date.now() < endTime) {
-          this.connection.sportCommand(SportCommand.Move, moveParams);
+          this.robot().sportCommand(SportCommand.Move, moveParams);
           await sleep(500);
         }
-        this.connection.sportCommand(SportCommand.StopMove);
+        this.robot().sportCommand(SportCommand.StopMove);
       } else {
         // Single command, run until the robot says it's done
         await this.runAndWait(cmd.apiId, params);
@@ -227,6 +379,11 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
 
       this.finish(cmd, true, "");
     } catch (err) {
+      if (err instanceof RobotLinkLost || !this.robotConnected) {
+        // Run it again once the robot is back
+        this.queue.unshift(cmd);
+        return;
+      }
       const errMsg = err instanceof Error ? err.message : String(err);
       this.finish(cmd, false, errMsg);
     }
@@ -234,24 +391,38 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     await sleep(this.settleMs);
   }
 
+  /** The live connection, or a link-lost error to requeue the command */
+  private robot(): Go2Connection {
+    if (!this.connection || !this.robotConnected) throw new RobotLinkLost("Robot link lost");
+    return this.connection;
+  }
+
   /**
    * Send a sport command and wait for the robot's reply, which comes once
    * the move is done. Without a reply, fall back to twice the schema's
    * duration so a dropped reply can't stall the queue.
    *
-   * @throws If the robot replies with a non-zero status code.
+   * @throws If the robot replies with a non-zero status code, or the link
+   *   drops before it replies.
    */
   private async runAndWait(
     apiId: number,
     params?: Record<string, unknown>,
   ): Promise<void> {
     const estimate = SCHEMA_BY_API_ID.get(apiId)?.estimatedDurationMs ?? 0;
-    const code = await this.connection.sportCommandAndWait(
-      apiId as SportCommand,
-      params,
-      Math.max(estimate * 2, 3000),
-    );
+    let code: number | null;
+    try {
+      code = await this.robot().sportCommandAndWait(
+        apiId as SportCommand,
+        params,
+        Math.max(estimate * 2, 3000),
+      );
+    } catch (err) {
+      // Sending fails when the data channel has closed
+      throw new RobotLinkLost(err instanceof Error ? err.message : String(err));
+    }
     if (code === null) {
+      if (!this.robotConnected) throw new RobotLinkLost("Robot link lost before it replied");
       this.emit("error", new Error(`No reply from the robot to apiId ${apiId}`));
     } else if (code !== 0) {
       throw new Error(`Robot replied with code ${code} to apiId ${apiId}`);
@@ -260,38 +431,53 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
 
   private finish(cmd: OnChainCommand, success: boolean, resultData: string): void {
     this.emit("commandExecuted", cmd, success, resultData);
-    this.receipts = this.receipts.then(() =>
-      this.submitReceipt(cmd, success, resultData),
+    this.send(`receipt for nonce ${cmd.nonce}`, () =>
+      this.dispatcherWriter.submitReceipt(this.robotId, cmd.nonce, success, resultData),
     );
   }
 
-  private async submitReceipt(
-    cmd: OnChainCommand,
-    success: boolean,
-    resultData: string,
-  ): Promise<void> {
+  private publishStatus(): void {
+    if (!this.statusPublisher) return;
+    this.statusPublisher.publish(this.robotId, this.status).catch((err) => {
+      this.emit("error", new Error(`Status report failed: ${err instanceof Error ? err.message : err}`));
+    });
+  }
+
+  /** The default: the registry's `reportStatus`, through the same transaction queue as receipts */
+  private chainStatusPublisher(): StatusPublisher {
+    return {
+      publish: async (robotId, status) => {
+        this.send("status report", () =>
+          this.registryWriter.reportStatus(
+            robotId,
+            status.online,
+            status.robotConnected,
+            status.battery ?? UNKNOWN_BATTERY,
+          ),
+        );
+      },
+    };
+  }
+
+  /** Broadcast a transaction after the previous one, without waiting for either to confirm */
+  private send(label: string, write: () => Promise<ContractTransactionResponse>): void {
     const fail = (err: unknown): void => {
       this.emit(
         "error",
-        new Error(
-          `Failed to submit receipt for nonce ${cmd.nonce}: ${err instanceof Error ? err.message : err}`,
-        ),
+        new Error(`Failed to submit ${label}: ${err instanceof Error ? err.message : err}`),
       );
     };
-    try {
-      const tx = await this.receiptDispatcher.submitReceipt(
-        this.robotId,
-        cmd.nonce,
-        success,
-        resultData,
-      );
-      const confirmation: Promise<void> = waitForReceipt(tx)
-        .then(() => undefined, fail)
-        .finally(() => this.confirmations.delete(confirmation));
-      this.confirmations.add(confirmation);
-    } catch (err) {
-      fail(err);
-    }
+    this.sends = this.sends.then(async () => {
+      try {
+        const tx = await write();
+        const confirmation: Promise<void> = waitForReceipt(tx)
+          .then(() => undefined, fail)
+          .finally(() => this.confirmations.delete(confirmation));
+        this.confirmations.add(confirmation);
+      } catch (err) {
+        fail(err);
+      }
+    });
   }
 }
 

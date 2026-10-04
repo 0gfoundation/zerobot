@@ -80,7 +80,7 @@ Runnable end-to-end scripts in [`examples/`](./examples), including the operator
 For browsing without an IDE. Method semantics — parameter units, throw conditions, wait-or-not contracts — live in JSDoc, surfaced via IntelliSense after `import`.
 
 **`@0g-foundation/zerobot-sdk`** (root)
-- **`ChainClient`** — `registerRobot` · `updateRobot` · `addController` · `removeController` · `addOperator` · `removeOperator` · `isOperator` · `listOperators` · `setCommandPrice` · `setPublicCommands` · `dispatchCommand` · `dispatchBatch` · `submitReceipt` · `withdrawBalance` · `getRobotNonce` · `getCommand` · `getPendingCommands` · `isAuthorized` · `getRobot` · `getCommandPrice` · `listRobotsByOwner`
+- **`ChainClient`** — `registerRobot` · `updateRobot` · `addController` · `removeController` · `addOperator` · `removeOperator` · `isOperator` · `listOperators` · `reportStatus` · `getStatus` · `setCommandPrice` · `setPublicCommands` · `dispatchCommand` · `dispatchBatch` · `submitReceipt` · `withdrawBalance` · `getRobotNonce` · `getCommand` · `getPendingCommands` · `isAuthorized` · `getRobot` · `getCommandPrice` · `listRobotsByOwner`
 - **`Commander`** — `sendCommand` · `sendBatch`
 - **`ChainListener`** — `start` · `stop`; events: `command`, `error`
 - **`AIBroker`** — `initialize` · `resolvePrompt`
@@ -102,7 +102,7 @@ const schemas = getSchemasForRobotType(robot.robotType); // [] for unknown types
 - Enums: `DataChannelType`, `RtcTopic`. Message builders: `buildSportCommandMessage` and siblings (vui / motionSwitcher / subscribe / unsubscribe / videoToggle / audioToggle). Crypto helpers: `generateAesKey`, `aesEcbEncrypt`/`Decrypt`, `aesGcmDecrypt`, `rsaEncrypt`, `computeValidationResponse`.
 
 **`@0g-foundation/zerobot-sdk/operator`**
-- **`OperatorNode`** — `start` · `stop`; events: `started`, `stopped`, `commandReceived`, `commandStarted`, `commandExecuted`, `error`
+- **`OperatorNode`** — `start` · `stop`; events: `started`, `stopped`, `commandReceived`, `commandStarted`, `commandExecuted`, `status`, `error`
 
 **`@0g-foundation/zerobot-sdk/mock`**
 - `startMockRobot(port?: number)`

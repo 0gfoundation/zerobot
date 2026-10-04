@@ -47,6 +47,24 @@ export interface OnChainCommand {
   status: CommandStatus;
 }
 
+/** What an operator reports about itself and its robot. */
+export interface OperatorStatus {
+  /** False only in the operator's last report before a clean stop */
+  online: boolean;
+  /** The operator's WebRTC link is up and the robot is streaming state */
+  robotConnected: boolean;
+  /** Battery charge, 0-100. Undefined until the robot reports it. */
+  battery?: number;
+}
+
+/** The latest `OperatorStatus` on record for a robot, with when it was reported. */
+export interface RobotStatus extends OperatorStatus {
+  /** Block time of the report in ms since the epoch, or 0 if none yet */
+  updatedAt: number;
+  /** The owner or operator address that reported it */
+  reporter: string;
+}
+
 /**
  * Owner settings to apply in one transaction (the registry's `multicall`).
  * Unset fields are left as they are.

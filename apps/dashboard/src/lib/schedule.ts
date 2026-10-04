@@ -23,15 +23,18 @@ export interface Slot {
  * rejected without running, so they take no time.
  *
  * Only commands this page saw while pending get a slot. Ones already done
- * when the page loaded have no start time to replay.
+ * when the page loaded have no start time to replay. Nothing starts before
+ * `availableFrom`, when the robot last came online: the operator holds the
+ * queue while the robot is away.
  */
 export function schedule(
 	entries: QueueEntry[],
 	schemas: Map<number, CommandSchema>,
-	menu: Set<number>
+	menu: Set<number>,
+	availableFrom = 0
 ): Slot[] {
 	const slots: Slot[] = [];
-	let free = 0;
+	let free = availableFrom;
 	for (const entry of entries) {
 		const schema = schemas.get(entry.command.apiId);
 		if (!entry.seenPending || !schema || !menu.has(schema.apiId)) continue;

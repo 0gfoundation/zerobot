@@ -11,6 +11,7 @@ import { errorMessage, readClient, walletClient } from '@/lib/chain';
 import { defaultNetwork } from '@/lib/networks';
 import { useQueue } from '@/lib/use-queue';
 import { useRobot } from '@/lib/use-robot';
+import { useRobotStatus } from '@/lib/use-robot-status';
 
 const MAX_NOTE_BYTES = 64;
 /** Headroom over the price for gas, so the transaction doesn't fail on fees */
@@ -33,6 +34,10 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 	const switchChain = useSwitchChain();
 	const balance = useBalance({ address, chainId: defaultNetwork.chain.id, query: { refetchInterval: 4000 } });
 	const { entries } = useQueue(robot.data?.robotId);
+	const status = useRobotStatus(robot.data?.robotId);
+	// Only take payment when the operator and robot are both up, or the move
+	// would wait in the queue and expire
+	const available = status.data?.robotOnline ?? false;
 
 	const [note, setNote] = useState('');
 	const [move, setMove] = useState<ResolvedMenuItem | null>(null);
@@ -163,12 +168,25 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 					</Step>
 
 					{submission?.error && <p className="mt-4 text-sm text-danger">{submission.error}</p>}
+					{status.data && !available && (
+						<p className="mt-4 text-sm text-warning" role="status">
+							{displayName} isn&apos;t taking moves right now. Check back in a minute.
+						</p>
+					)}
 
 					<div className="mt-6">
 						<Button
 							fullWidth
 							onClick={send}
-							disabled={!wallet || Boolean(wrongChain) || !enoughFunds || !move || noteBytes === 0 || noteBytes > MAX_NOTE_BYTES}
+							disabled={
+								!available ||
+								!wallet ||
+								Boolean(wrongChain) ||
+								!enoughFunds ||
+								!move ||
+								noteBytes === 0 ||
+								noteBytes > MAX_NOTE_BYTES
+							}
 						>
 							Pay {formatEther(data.price)} 0G
 						</Button>

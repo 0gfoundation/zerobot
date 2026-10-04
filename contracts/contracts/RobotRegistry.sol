@@ -28,6 +28,7 @@ contract RobotRegistry is
     // nothing else, so the owner's wallet never has to live on one
     mapping(bytes32 => mapping(address => bool)) private _operators;
     mapping(bytes32 => uint256) private _commandPrices;
+    mapping(bytes32 => RobotStatus) private _status;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -122,6 +123,31 @@ contract RobotRegistry is
         address caller
     ) external view returns (bool) {
         return _operators[robotId][caller];
+    }
+
+    function reportStatus(
+        bytes32 robotId,
+        bool online,
+        bool robotConnected,
+        uint8 battery
+    ) external {
+        require(
+            _robots[robotId].owner == msg.sender || _operators[robotId][msg.sender],
+            "Only robot owner or operator can report status"
+        );
+        require(battery <= 100 || battery == 255, "Invalid battery");
+        _status[robotId] = RobotStatus({
+            online: online,
+            robotConnected: robotConnected,
+            battery: battery,
+            updatedAt: uint64(block.timestamp),
+            reporter: msg.sender
+        });
+        emit StatusReported(robotId, msg.sender, online, robotConnected, battery);
+    }
+
+    function getStatus(bytes32 robotId) external view returns (RobotStatus memory) {
+        return _status[robotId];
     }
 
     function setCommandPrice(

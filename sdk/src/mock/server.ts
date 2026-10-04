@@ -87,8 +87,13 @@ interface MockConnection {
   pc: any;
   dataChannel: any | null;
   heartbeatInterval: ReturnType<typeof setInterval> | null;
+  /** Streams rt/lf/lowstate once subscribed, as the real robot does */
+  lowStateInterval: ReturnType<typeof setInterval> | null;
   validated: boolean;
 }
+
+/** Battery charge the mock reports, in percent */
+const MOCK_BATTERY = 87;
 
 let activeConnection: MockConnection | null = null;
 
@@ -96,6 +101,8 @@ function cleanupConnection() {
   if (activeConnection) {
     if (activeConnection.heartbeatInterval)
       clearInterval(activeConnection.heartbeatInterval);
+    if (activeConnection.lowStateInterval)
+      clearInterval(activeConnection.lowStateInterval);
     if (activeConnection.dataChannel) activeConnection.dataChannel.close();
     if (activeConnection.pc) activeConnection.pc.close();
     activeConnection = null;
@@ -111,6 +118,7 @@ async function handleSdpOffer(clientSdp: string): Promise<string> {
     pc,
     dataChannel: null,
     heartbeatInterval: null,
+    lowStateInterval: null,
     validated: false,
   };
   activeConnection = conn;
@@ -232,6 +240,19 @@ function handleDataChannelMessage(
 
     case "subscribe":
       console.log(`[mock] Subscribe: ${msg.topic}`);
+      // Low state about once a second, with the battery, like a Go2 over WebRTC
+      if (msg.topic === "rt/lf/lowstate" && !conn.lowStateInterval) {
+        conn.lowStateInterval = setInterval(() => {
+          if (dc.readyState !== "open") return;
+          dc.send(
+            JSON.stringify({
+              type: "msg",
+              topic: "rt/lf/lowstate",
+              data: { bms_state: { soc: MOCK_BATTERY }, power_v: 28.3 },
+            }),
+          );
+        }, 1000);
+      }
       break;
 
     case "unsubscribe":
