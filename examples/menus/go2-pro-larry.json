@@ -12,9 +12,34 @@
       "description": "Larry sits down like a good dog, then stands back up."
     },
     {
+      "command": "StandDown",
+      "label": "Lie down",
+      "description": "Larry lies down flat on the floor, then gets back up."
+    },
+    {
       "command": "Stretch",
       "label": "Big stretch",
       "description": "Larry reaches his front paws forward for a long stretch."
+    },
+    {
+      "command": "FingerHeart",
+      "label": "Paw heart",
+      "description": "Larry sits up and makes a heart with his front paws."
+    },
+    {
+      "command": "Content",
+      "label": "Happy dog",
+      "description": "Larry shows the crowd how content he is."
+    },
+    {
+      "command": "Dance1",
+      "label": "Dance",
+      "description": "Larry busts out a 17-second dance routine."
+    },
+    {
+      "command": "Dance2",
+      "label": "Dance marathon",
+      "description": "Larry's full 37-second routine, the longest move on the menu."
     }
   ]
 }
