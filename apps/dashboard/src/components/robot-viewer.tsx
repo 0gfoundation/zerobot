@@ -68,6 +68,67 @@ const ROBOT_CONFIGS: Record<string, RobotConfig> = {
  */
 const AIRBORNE_M = 0.05;
 
+/** Brand purples (0G Brand Guide 2025): Deep Purple and Hero Purple */
+const DEEP_PURPLE = 0x9200e1;
+const HERO_PURPLE = 0xb75fff;
+
+/** A soft purple pool of light for the stage floor, fading to nothing at the rim */
+function glowTexture(): THREE.CanvasTexture {
+	const canvas = document.createElement('canvas');
+	canvas.width = canvas.height = 256;
+	const ctx = canvas.getContext('2d')!;
+	const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+	gradient.addColorStop(0, 'rgba(183, 95, 255, 0.55)');
+	gradient.addColorStop(0.45, 'rgba(146, 0, 225, 0.22)');
+	gradient.addColorStop(1, 'rgba(146, 0, 225, 0)');
+	ctx.fillStyle = gradient;
+	ctx.fillRect(0, 0, 256, 256);
+	const texture = new THREE.CanvasTexture(canvas);
+	texture.colorSpace = THREE.SRGBColorSpace;
+	return texture;
+}
+
+/**
+ * The venue look in place of the grid: a floor that takes the robot's
+ * shadow, a purple glow and two rings under it, and a purple rim light.
+ */
+function addStage(scene: THREE.Scene, key: THREE.DirectionalLight) {
+	key.shadow.mapSize.set(2048, 2048);
+	Object.assign(key.shadow.camera, { left: -1, right: 1, top: 1, bottom: -1, near: 0.5, far: 8 });
+
+	const flat = (mesh: THREE.Mesh, y: number) => {
+		mesh.rotation.x = -Math.PI / 2;
+		mesh.position.y = y;
+		scene.add(mesh);
+	};
+	flat(
+		new THREE.Mesh(
+			new THREE.CircleGeometry(1.1, 64),
+			new THREE.MeshBasicMaterial({ map: glowTexture(), transparent: true, depthWrite: false, toneMapped: false })
+		),
+		-0.002
+	);
+	const floor = new THREE.Mesh(new THREE.PlaneGeometry(4, 4), new THREE.ShadowMaterial({ opacity: 0.5 }));
+	floor.receiveShadow = true;
+	flat(floor, 0);
+	for (const [radius, opacity] of [
+		[0.5, 0.55],
+		[0.78, 0.25]
+	]) {
+		flat(
+			new THREE.Mesh(
+				new THREE.RingGeometry(radius, radius + 0.005, 128),
+				new THREE.MeshBasicMaterial({ color: HERO_PURPLE, transparent: true, opacity, depthWrite: false, toneMapped: false })
+			),
+			0.001
+		);
+	}
+
+	const rim = new THREE.DirectionalLight(DEEP_PURPLE, 3);
+	rim.position.set(-1.5, 1.2, -2);
+	scene.add(rim);
+}
+
 function robotKey(type: string): string {
 	return type.startsWith('g1') ? 'g1' : 'go2';
 }
@@ -84,11 +145,14 @@ interface Scene {
 export function RobotViewer({
 	robotType = 'go2_pro',
 	className = '',
+	variant = 'grid',
 	onLoad,
 	ref
 }: {
 	robotType?: string;
 	className?: string;
+	/** `stage`: a lit floor with a purple glow for the venue screen, in place of the grid. Read once, on mount. */
+	variant?: 'grid' | 'stage';
 	/** Called once the model has loaded and `setPose` will take effect */
 	onLoad?: () => void;
 	ref?: Ref<RobotViewerHandle>;
@@ -181,7 +245,8 @@ export function RobotViewer({
 		threeScene.add(fill);
 		// Sky/ground fill so surfaces facing away from the key light keep their shape
 		threeScene.add(new THREE.HemisphereLight(0xffffff, 0x303048, 1.2));
-		threeScene.add(new THREE.GridHelper(2, 20, 0x8a8aa8, 0x55557a));
+		if (variant === 'stage') addStage(threeScene, key);
+		else threeScene.add(new THREE.GridHelper(2, 20, 0x8a8aa8, 0x55557a));
 
 		const world = new THREE.Group();
 		world.rotation.x = -Math.PI / 2;
@@ -212,6 +277,8 @@ export function RobotViewer({
 			renderer.domElement.remove();
 			scene.current = null;
 		};
+		// The scene is built once; a variant change would need a new viewer
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	// Model, per robot type

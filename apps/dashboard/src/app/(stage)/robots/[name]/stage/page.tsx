@@ -2,7 +2,6 @@
 
 import { use, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { formatEther } from 'viem';
-import { renderSVG } from 'uqr';
 import {
 	CommandStatus,
 	buildTimeline,
@@ -11,7 +10,10 @@ import {
 	type RecordingFile,
 	type Timeline
 } from '@0g-foundation/zerobot-sdk';
+import { BrandQr } from '@/components/brand-qr';
 import { RobotViewer, type RobotViewerHandle } from '@/components/robot-viewer';
+import { METAMASK } from '@/components/wallet/wallets';
+import { ZeroGMark } from '@/components/zero-g-mark';
 import { defaultNetwork } from '@/lib/networks';
 import { robotFamily } from '@/lib/robots';
 import { recordingTime, schedule, type Hold, type Slot } from '@/lib/schedule';
@@ -22,6 +24,36 @@ import { useRobotStatus } from '@/lib/use-robot-status';
 
 /** Joint smoothing for playback; "Light" on the recordings page */
 const SMOOTHING_MS = 60;
+
+/** Names for `?demo`, which fills an empty queue to preview the layout */
+const DEMO_NAMES = ['Priya', 'Marcus', 'Aiko', 'Diego', 'Sam', 'Lena'];
+
+/** What the screen shows about the robot, from its status or a `?demo=` preview */
+interface StageState {
+	robotOnline: boolean;
+	queuePaused: boolean;
+	operatorOnline: boolean;
+	/** False hides the QR behind "Paused" */
+	publicCommands?: boolean;
+	battery?: number;
+}
+
+/**
+ * Previews for each state the venue can see, e.g. `?demo=offline`. A bare
+ * `?demo` is `playing`. Display only: the schedule still follows the chain.
+ */
+const DEMO_STATES = {
+	playing: { robotOnline: true, queuePaused: false, operatorOnline: true, battery: 82 },
+	waiting: { robotOnline: true, queuePaused: false, operatorOnline: true, battery: 82 },
+	break: { robotOnline: true, queuePaused: true, operatorOnline: true, battery: 82 },
+	paused: { robotOnline: true, queuePaused: false, operatorOnline: true, publicCommands: false, battery: 82 },
+	'low-battery': { robotOnline: true, queuePaused: false, operatorOnline: true, battery: 14 },
+	reconnecting: { robotOnline: false, queuePaused: false, operatorOnline: true },
+	offline: { robotOnline: false, queuePaused: false, operatorOnline: false }
+} satisfies Record<string, StageState>;
+type DemoState = keyof typeof DEMO_STATES;
+/** The pause between loops of the demo's move */
+const DEMO_LOOP_GAP_MS = 1500;
 
 /**
  * The venue screen: the robot model playing each move in step with the
@@ -38,6 +70,13 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 	const [viewerReady, setViewerReady] = useState(false);
 	const [timelines, setTimelines] = useState<Map<number, Timeline>>(new Map());
 	const [now, setNow] = useState(() => Date.now());
+	const [demo, setDemo] = useState<DemoState | null>(null);
+	useEffect(() => {
+		const value = new URLSearchParams(window.location.search).get('demo');
+		if (value !== null) setDemo(value in DEMO_STATES ? (value as DemoState) : 'playing');
+	}, []);
+	const demoRef = useRef(demo);
+	demoRef.current = demo;
 	const status = useRobotStatus(data?.robotId);
 	const robotOnline = status.data?.robotOnline ?? false;
 	const queuePaused = useQueuePaused(data?.robotId).data ?? false;
@@ -109,8 +148,13 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 			const t = Date.now();
 			const slot = slotsRef.current.find((s) => s.start <= t && t < s.end);
 			const timeline = slot && timelines.get(slot.schema.apiId);
+			const demoTimeline = demoRef.current === 'playing' ? timelines.values().next().value : undefined;
 			if (slot && timeline) {
 				const pose = samplePose(timeline, recordingTime(slot, t - slot.start), SMOOTHING_MS);
+				if (pose) viewer.current?.setPose(pose);
+				idle = false;
+			} else if (demoTimeline) {
+				const pose = samplePose(demoTimeline, t % (demoTimeline.endMs + DEMO_LOOP_GAP_MS), SMOOTHING_MS);
 				if (pose) viewer.current?.setPose(pose);
 				idle = false;
 			} else if (!idle) {
@@ -129,10 +173,6 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 	}, [viewerReady, timelines]);
 
 	const pageUrl = typeof window === 'undefined' ? '' : `${window.location.origin}/robots/${name}`;
-	const qr = useMemo(
-		() => (pageUrl ? renderSVG(pageUrl, { border: 2, whiteColor: '#ffffff', blackColor: '#000000' }) : ''),
-		[pageUrl]
-	);
 
 	if (robot.isPending) return <Centered>Loading…</Centered>;
 	if (!data) return <Centered>No robot called “{name}”.</Centered>;
@@ -148,106 +188,209 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 		.slice(-5)
 		.reverse();
 	const labelFor = (apiId: number) => data.menu.find((m) => m.apiId === apiId);
+	const queued = [...upcoming.map((s) => s.entry), ...unplaced].map((e) => ({
+		key: String(e.command.nonce),
+		name: e.command.note || 'Anonymous',
+		apiId: e.command.apiId
+	}));
+	const queue =
+		demo && demo !== 'offline' && demo !== 'reconnecting' && queued.length === 0
+			? DEMO_NAMES.map((name, i) => ({ key: `demo-${i}`, name, apiId: data.menu[i % data.menu.length].apiId }))
+			: queued;
+
+	const shown: StageState = demo
+		? DEMO_STATES[demo]
+		: {
+				robotOnline,
+				queuePaused,
+				operatorOnline: status.data?.operatorOnline ?? false,
+				battery: status.data?.battery
+			};
+	const publicCommands = shown.publicCommands ?? data.robot.publicCommands;
+	const idleMessage =
+		shown.robotOnline && shown.queuePaused
+			? `${data.displayName} is taking a short break`
+			: (!demo && status.isPending) || shown.robotOnline
+				? `${data.displayName} is waiting for a move`
+				: shown.operatorOnline
+					? `${data.displayName} is reconnecting…`
+					: `${data.displayName} is offline`;
+	// The demo plays the first menu move, as the model's loop does
+	const nowPlaying = current
+		? { name: current.entry.command.note || 'Anonymous', apiId: current.entry.command.apiId }
+		: demo === 'playing'
+			? { name: 'Will', apiId: data.menu[0].apiId }
+			: undefined;
+	const currentMove = nowPlaying && labelFor(nowPlaying.apiId);
 
 	return (
-		<div className="grid h-dvh grid-cols-[minmax(0,1fr)_26rem] gap-8 bg-bg p-8 text-ink">
-			<section className="relative flex min-h-0 min-w-0 flex-col">
-				<div className="mb-4 h-20">
-					{current ? (
-						<>
-							<p className="text-lg text-ink-muted">Now</p>
-							<p className="text-4xl font-semibold">
-								{labelFor(current.entry.command.apiId)?.emoji} {labelFor(current.entry.command.apiId)?.label}
-								<span className="text-ink-muted"> for </span>
-								{current.entry.command.note || 'Anonymous'}
-							</p>
-						</>
-					) : (
-						<p className="pt-6 text-4xl font-semibold text-ink-muted">
-							{robotOnline && queuePaused
-								? `${data.displayName} is taking a short break`
-								: status.isPending || robotOnline
-								? `${data.displayName} is waiting for a move`
-								: status.data?.operatorOnline
-									? `${data.displayName} is reconnecting…`
-									: `${data.displayName} is offline`}
-						</p>
+		<div className="relative isolate grid h-dvh grid-cols-[minmax(0,1fr)_31rem] grid-rows-[auto_minmax(0,1fr)] gap-x-12 gap-y-4 overflow-hidden bg-bg px-12 py-6 text-ink">
+			{/* A purple spotlight on the stage, a softer one behind the QR, and a faint dot field */}
+			<div
+				aria-hidden
+				className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_55%_60%_at_35%_68%,rgba(146,0,225,0.32),transparent_70%),radial-gradient(ellipse_40%_45%_at_88%_30%,rgba(183,95,255,0.14),transparent_70%)]"
+			/>
+			<div
+				aria-hidden
+				className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(rgba(255,255,255,0.09)_1px,transparent_1px)] bg-size-[28px_28px] [mask-image:radial-gradient(ellipse_60%_55%_at_35%_60%,black,transparent_75%)]"
+			/>
+
+			<header className="flex items-center justify-between">
+				<div className="flex items-center gap-4">
+					<ZeroGMark className="h-[38px] w-[78px] text-ink" />
+					<span aria-hidden className="h-9 w-px bg-lockup-rule" />
+					<span className="text-2xl font-bold">
+						<span className="text-brand-900">Zero</span>bot
+					</span>
+				</div>
+				<div className="flex items-center gap-4 text-lg">
+					{shown.battery !== undefined && shown.operatorOnline && (
+						<span className={shown.battery < 20 ? 'font-semibold text-warning' : 'text-ink-muted'}>
+							Battery {shown.battery}%
+						</span>
 					)}
 				</div>
-				{status.data?.battery !== undefined && status.data.operatorOnline && (
-					<p
-						className={`absolute top-0 right-0 text-lg ${status.data.battery < 20 ? 'font-semibold text-warning' : 'text-ink-muted'}`}
-					>
-						Battery {status.data.battery}%
-					</p>
-				)}
-				<RobotViewer
-					ref={viewer}
-					robotType={data.robot.robotType}
-					onLoad={() => setViewerReady(true)}
-					className="min-h-0 flex-1"
-				/>
-				{error && <p className="absolute bottom-0 left-0 text-sm text-danger">Chain: {error}</p>}
+			</header>
+
+			<section className="relative col-start-1 flex min-h-0 min-w-0 flex-col">
+				<div className="relative flex min-h-0 flex-1 flex-col">
+					<RobotViewer
+						ref={viewer}
+						robotType={data.robot.robotType}
+						variant="stage"
+						onLoad={() => setViewerReady(true)}
+						className="min-h-0 flex-1"
+					/>
+					<div className="pointer-events-none absolute top-0 left-0 max-w-[44rem] rounded-3xl border border-white/10 bg-white/[0.05] px-8 py-6 backdrop-blur-md">
+						{nowPlaying ? (
+							<>
+								<p className="flex items-center gap-3 text-base font-semibold tracking-[0.2em] text-brand-500 uppercase">
+									<span className="relative flex size-2.5">
+										<span className="absolute inline-flex size-full animate-ping rounded-full bg-brand-500 opacity-75" />
+										<span className="relative inline-flex size-2.5 rounded-full bg-brand-500" />
+									</span>
+									Now playing
+								</p>
+								<p className="mt-3 text-5xl leading-tight font-semibold">
+									{currentMove?.label} {currentMove?.emoji}
+								</p>
+								<p className="mt-2 truncate text-2xl text-ink-muted">
+									for <span className="font-medium text-ink">{nowPlaying.name}</span>
+								</p>
+							</>
+						) : (
+							<>
+								<p className="text-base font-semibold tracking-[0.2em] text-ink-muted uppercase">Stage</p>
+								<p className="mt-3 text-4xl leading-tight font-semibold">{idleMessage}</p>
+							</>
+						)}
+					</div>
+				</div>
+
+				<div className="mt-6 flex h-12 items-center gap-3 overflow-hidden [mask-image:linear-gradient(to_right,black_85%,transparent)]">
+					<span className="shrink-0 text-sm font-semibold tracking-[0.2em] text-ink-muted uppercase">Just done</span>
+					{done.length > 0 ? (
+						done.map((e, i) => {
+							const move = labelFor(e.command.apiId);
+							return (
+								<span
+									key={String(e.command.nonce)}
+									style={{ opacity: 1 - i * 0.15 }}
+									className="flex shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] py-2 pr-5 pl-2 text-lg"
+								>
+									<span className="flex size-7 items-center justify-center rounded-full bg-success/20 text-sm text-success">
+										✓
+									</span>
+									<span className="max-w-[12rem] truncate font-medium">{e.command.note || 'Anonymous'}</span>
+									<span className="text-ink-muted">
+										{move?.label} {move?.emoji}
+									</span>
+								</span>
+							);
+						})
+					) : (
+						<span className="text-lg text-ink-muted">Nothing yet. The first move is yours.</span>
+					)}
+				</div>
+				{error && <p className="absolute right-0 bottom-0 text-sm text-danger">Chain: {error}</p>}
 			</section>
 
-			<aside className="flex min-h-0 flex-col">
-				{data.robot.publicCommands ? (
+			{/* Spans both rows, so the QR starts level with the header */}
+			<aside className="col-start-2 row-span-2 row-start-1 flex min-h-0 flex-col">
+				{publicCommands ? (
 					<>
-						<figure className="rounded-3xl bg-white p-4">
-							<div dangerouslySetInnerHTML={{ __html: qr }} />
-							<figcaption className="mt-1 text-center font-mono text-lg text-black">
-								{pageUrl.replace(/^https?:\/\//, '')}
+						<figure className="rounded-[2rem] bg-white p-4 shadow-[0_0_90px_-20px_rgba(146,0,225,0.7)]">
+							{/* Capped by the screen's height so five names in Up next always fit below */}
+							{pageUrl && <BrandQr value={pageUrl} className="mx-auto block w-full max-w-[calc(100dvh-36rem)]" />}
+							<figcaption className="mt-2 text-center">
+								<span className="block text-4xl leading-tight font-bold tracking-tight text-black">Scan to make {data.displayName} move</span>
+								<span className="block truncate font-mono text-sm text-[#7c7e89]">
+									{pageUrl.replace(/^https?:\/\//, '')}
+								</span>
 							</figcaption>
 						</figure>
-						<p className="mt-4 text-2xl font-semibold">Scan to make {data.displayName} move</p>
-						<p className="mt-1 text-ink-muted">{formatEther(data.price)} testnet 0G per move</p>
-						{defaultNetwork.metaMaskOnly && <p className="mt-1 text-ink-muted">Pay with MetaMask</p>}
+						<p className="mt-4 flex items-center gap-3 rounded-2xl bg-linear-to-br from-[#9200e1] to-[#b75fff] px-6 py-3 whitespace-nowrap text-white">
+							<span className="text-4xl font-bold tabular-nums">{formatEther(data.price)} 0G</span>
+							<span className="rounded-full bg-white/20 px-3 py-1 text-base font-semibold">Testnet</span>
+							<span className="text-2xl font-medium text-white/85">/ per move</span>
+						</p>
+						{defaultNetwork.metaMaskOnly && (
+							<p className="mt-2 flex items-center justify-end gap-2.5 text-lg font-medium text-ink/90">
+								{/* eslint-disable-next-line @next/next/no-img-element */}
+								<img src={METAMASK.icon} alt="" className="size-6" />
+								Pay with MetaMask
+							</p>
+						)}
 					</>
 				) : (
 					// Paused payments hide the QR, so nobody scans into a page that can't take them
-					<div className="flex aspect-square flex-col items-center justify-center rounded-3xl border border-hairline p-8 text-center">
-						<p className="text-4xl font-semibold">Paused</p>
-						<p className="mt-3 text-xl text-ink-muted">{data.displayName} isn&apos;t taking new moves right now. Back soon!</p>
+					<div className="flex aspect-square flex-col items-center justify-center rounded-[2rem] border border-white/10 bg-white/[0.04] p-8 text-center">
+						<p className="text-5xl font-semibold">Paused</p>
+						<p className="mt-4 text-2xl text-ink-muted">{data.displayName} isn&apos;t taking new moves right now. Back soon!</p>
 					</div>
 				)}
 
-				<h2 className="mt-8 flex items-center gap-3 text-sm font-medium uppercase tracking-wider text-ink-muted">
+				<h2 className="mt-5 flex items-center gap-3 text-sm font-semibold tracking-[0.2em] text-ink-muted uppercase">
 					Up next
-					{queuePaused && robotOnline && (
-						<span className="rounded-full bg-warning/15 px-2 py-0.5 text-warning normal-case tracking-normal">
+					{queue.length > 0 && (
+						<span className="rounded-full bg-white/10 px-2.5 py-0.5 text-ink tracking-normal">{queue.length}</span>
+					)}
+					{shown.queuePaused && shown.robotOnline && (
+						<span className="rounded-full bg-warning/15 px-2.5 py-0.5 tracking-normal text-warning normal-case">
 							Queue paused
 						</span>
 					)}
 				</h2>
-				<ol className="mt-2 space-y-2 text-xl">
-					{[...upcoming.map((s) => s.entry), ...unplaced].slice(0, 6).map((e, i) => (
-						<li key={String(e.command.nonce)} className="flex justify-between gap-4">
-							<span className="truncate">
-								<span className="text-ink-muted">#{i + 1}</span> {e.command.note || 'Anonymous'}
-							</span>
-							<span className="shrink-0 text-ink-muted">
-								{labelFor(e.command.apiId)?.emoji} {labelFor(e.command.apiId)?.label}
-							</span>
+				<ol className="mt-3 min-h-0 flex-1 space-y-1.5 overflow-hidden">
+					{queue.slice(0, 5).map((e, i) => {
+						const move = labelFor(e.apiId);
+						return (
+							<li
+								key={e.key}
+								className={`flex items-center gap-4 rounded-2xl border px-4 py-2 text-xl ${
+									i === 0 ? 'border-brand-500/50 bg-brand-500/15' : 'border-white/5 bg-white/[0.04]'
+								}`}
+							>
+								<span
+									className={`flex size-8 shrink-0 items-center justify-center rounded-full text-base font-semibold ${
+										i === 0 ? 'bg-brand-500 text-white' : 'bg-white/10 text-ink-muted'
+									}`}
+								>
+									{i + 1}
+								</span>
+								<span className="min-w-0 flex-1 truncate font-medium">{e.name}</span>
+								<span className="shrink-0 text-ink-muted">
+									{move?.label} {move?.emoji}
+								</span>
+							</li>
+						);
+					})}
+					{queue.length === 0 && (
+						<li className="rounded-2xl border border-dashed border-white/15 px-5 py-4 text-xl text-ink-muted">
+							Nobody in line. Scan and be first!
 						</li>
-					))}
-					{upcoming.length + unplaced.length === 0 && <li className="text-ink-muted">Nobody yet. Be first!</li>}
+					)}
 				</ol>
-
-				{done.length > 0 && (
-					<>
-						<h2 className="mt-8 text-sm font-medium uppercase tracking-wider text-ink-muted">Done</h2>
-						<ol className="mt-2 space-y-1 text-lg text-ink-muted">
-							{done.map((e) => (
-								<li key={String(e.command.nonce)} className="flex justify-between gap-4">
-									<span className="truncate">{e.command.note || 'Anonymous'}</span>
-									<span className="shrink-0">
-										{labelFor(e.command.apiId)?.emoji} {labelFor(e.command.apiId)?.label} ✓
-									</span>
-								</li>
-							))}
-						</ol>
-					</>
-				)}
 			</aside>
 		</div>
 	);

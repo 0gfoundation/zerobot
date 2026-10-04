@@ -78,6 +78,8 @@ export interface CommandSchema {
   name: string;
   /** Short name for end users, e.g. "Wave hello". Falls back to `name`. */
   label?: string;
+  /** Shown after the label wherever the move is listed, e.g. "Wave hello 👋". */
+  emoji?: string;
   description: string;
   /**
    * Command that returns the robot to standing once this one finishes, e.g.

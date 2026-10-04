@@ -19,6 +19,7 @@ export interface RobotMenuItem {
   label?: string;
   /** Overrides the schema's `description`. */
   description?: string;
+  /** Overrides the schema's `emoji`. */
   emoji?: string;
 }
 
@@ -59,7 +60,7 @@ export function resolveMenu(
       command: schema.name,
       label: item.label ?? schema.label ?? schema.name,
       description: item.description ?? schema.description,
-      emoji: item.emoji,
+      emoji: item.emoji ?? schema.emoji,
       schema,
     };
   });

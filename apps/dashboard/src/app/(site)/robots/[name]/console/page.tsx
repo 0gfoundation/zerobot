@@ -235,7 +235,7 @@ function CommandTable({
 								</td>
 								<td className="max-w-40 truncate py-1.5 pr-3">{e.command.note || 'Anonymous'}</td>
 								<td className="py-1.5 pr-3 whitespace-nowrap">
-									{item ? `${item.emoji ?? ''} ${item.label}` : `API ${e.command.apiId}`}
+									{item ? `${item.label} ${item.emoji ?? ''}` : `API ${e.command.apiId}`}
 								</td>
 								<td className="py-1.5 pr-3">
 									<WalletAddress address={e.command.sender} />
