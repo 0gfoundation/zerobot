@@ -16,6 +16,7 @@ import { robotFamily } from '@/lib/robots';
 import { recordingTime, schedule, type Slot } from '@/lib/schedule';
 import { useQueue } from '@/lib/use-queue';
 import { useRobot } from '@/lib/use-robot';
+import { useRobotStatus } from '@/lib/use-robot-status';
 
 /** Joint smoothing for playback; "Light" on the recordings page */
 const SMOOTHING_MS = 60;
@@ -33,6 +34,14 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 	const [viewerReady, setViewerReady] = useState(false);
 	const [timelines, setTimelines] = useState<Map<number, Timeline>>(new Map());
 	const [now, setNow] = useState(() => Date.now());
+	const status = useRobotStatus(data?.robotId);
+	const robotOnline = status.data?.robotOnline ?? false;
+	// When the robot last came online. The operator holds the queue while it's
+	// away, so the schedule restarts from here rather than catching up.
+	const [availableFrom, setAvailableFrom] = useState(0);
+	useEffect(() => {
+		if (robotOnline) setAvailableFrom(Date.now());
+	}, [robotOnline]);
 
 	// A projector reads better dark
 	useEffect(() => {
@@ -71,7 +80,10 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 		};
 	}, [data]);
 
-	const slots = useMemo(() => schedule(entries, schemas, menu), [entries, schemas, menu]);
+	const slots = useMemo(
+		() => (robotOnline ? schedule(entries, schemas, menu, availableFrom) : []),
+		[entries, schemas, menu, robotOnline, availableFrom]
+	);
 	const slotsRef = useRef<Slot[]>([]);
 	slotsRef.current = slots;
 
@@ -139,9 +151,22 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 							</p>
 						</>
 					) : (
-						<p className="pt-6 text-4xl font-semibold text-ink-muted">{data.displayName} is waiting for a move</p>
+						<p className="pt-6 text-4xl font-semibold text-ink-muted">
+							{status.isPending || robotOnline
+								? `${data.displayName} is waiting for a move`
+								: status.data?.operatorOnline
+									? `${data.displayName} is reconnecting…`
+									: `${data.displayName} is offline`}
+						</p>
 					)}
 				</div>
+				{status.data?.battery !== undefined && status.data.operatorOnline && (
+					<p
+						className={`absolute top-0 right-0 text-lg ${status.data.battery < 20 ? 'font-semibold text-warning' : 'text-ink-muted'}`}
+					>
+						Battery {status.data.battery}%
+					</p>
+				)}
 				<RobotViewer
 					ref={viewer}
 					robotType={data.robot.robotType}

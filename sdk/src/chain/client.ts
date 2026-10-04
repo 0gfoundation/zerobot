@@ -4,8 +4,10 @@ import type {
   CommandStatus,
   DispatchOptions,
   OnChainCommand,
+  OperatorStatus,
   Robot,
   RobotSettings,
+  RobotStatus,
 } from "../types/chain.js";
 import type { CommandPayload } from "../types/commands.js";
 import { REGISTRY_ABI, DISPATCHER_ABI } from "./abis.js";
@@ -212,6 +214,39 @@ export class ChainClient {
       candidates.map((a) => this.isOperator(robotId, a)),
     );
     return candidates.filter((_, i) => current[i]);
+  }
+
+  /**
+   * Record the operator's view of itself and the robot. Only callable by the
+   * robot's owner or an operator. The registry stamps it with the block time.
+   */
+  async reportStatus(
+    robotId: string,
+    status: OperatorStatus,
+  ): Promise<ContractTransactionReceipt | null> {
+    const tx = await this.registry.reportStatus(
+      robotId,
+      status.online,
+      status.robotConnected,
+      status.battery ?? UNKNOWN_BATTERY,
+    );
+    return waitForReceipt(tx);
+  }
+
+  /**
+   * The latest status report for a robot. `updatedAt` is 0 when none has
+   * been made; readers decide how old a report is too old to trust.
+   */
+  async getStatus(robotId: string): Promise<RobotStatus> {
+    const s = await this.registry.getStatus(robotId);
+    const battery = Number(s.battery);
+    return {
+      online: s.online,
+      robotConnected: s.robotConnected,
+      battery: battery === UNKNOWN_BATTERY ? undefined : battery,
+      updatedAt: Number(s.updatedAt) * 1000,
+      reporter: s.reporter,
+    };
   }
 
   /**
@@ -443,6 +478,9 @@ export class ChainClient {
     );
   }
 }
+
+/** The registry's battery value for "not reported" */
+export const UNKNOWN_BATTERY = 255;
 
 /** Normalize a `Command` struct as ethers returns it. */
 export function toOnChainCommand(cmd: Record<string, unknown>): OnChainCommand {

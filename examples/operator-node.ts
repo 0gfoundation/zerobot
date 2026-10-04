@@ -65,6 +65,11 @@ async function main(): Promise<void> {
     console.log("Operator node started. Listening for on-chain commands...");
   });
 
+  operator.on("status", (s) => {
+    const battery = s.battery === undefined ? "" : `, battery ${s.battery}%`;
+    console.log(`Robot ${s.robotConnected ? "connected" : "disconnected, queue paused"}${battery}`);
+  });
+
   operator.on("commandReceived", (cmd) => {
     console.log(
       `#${cmd.nonce} queued: ${describe(cmd.apiId)} from ${cmd.note || cmd.sender}`,

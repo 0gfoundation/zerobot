@@ -114,6 +114,40 @@ describe("RobotRegistry", function () {
     });
   });
 
+  describe("Status", function () {
+    it("should store an operator's report with the block time", async function () {
+      const { registry, controller, robotId } = await loadFixture(deployFixture);
+      await registry.registerRobot(robotId, "go2-pro-001", "go2_pro", ZERO_ROOT);
+      await registry.addOperator(robotId, controller.address);
+
+      await expect(registry.connect(controller).reportStatus(robotId, true, true, 87))
+        .to.emit(registry, "StatusReported")
+        .withArgs(robotId, controller.address, true, true, 87);
+      const status = await registry.getStatus(robotId);
+      expect(status.online).to.be.true;
+      expect(status.robotConnected).to.be.true;
+      expect(status.battery).to.equal(87);
+      expect(status.reporter).to.equal(controller.address);
+      expect(status.updatedAt).to.be.greaterThan(0);
+    });
+
+    it("should refuse reports from anyone but the owner or an operator", async function () {
+      const { registry, other, robotId } = await loadFixture(deployFixture);
+      await registry.registerRobot(robotId, "go2-pro-001", "go2_pro", ZERO_ROOT);
+      await expect(
+        registry.connect(other).reportStatus(robotId, true, true, 50)
+      ).to.be.revertedWith("Only robot owner or operator can report status");
+    });
+
+    it("should refuse a battery level over 100 other than unknown", async function () {
+      const { registry, robotId } = await loadFixture(deployFixture);
+      await registry.registerRobot(robotId, "go2-pro-001", "go2_pro", ZERO_ROOT);
+      await expect(registry.reportStatus(robotId, true, true, 101)).to.be.revertedWith("Invalid battery");
+      await registry.reportStatus(robotId, true, false, 255);
+      expect((await registry.getStatus(robotId)).battery).to.equal(255);
+    });
+  });
+
   describe("Multicall", function () {
     it("should register and configure a robot in one transaction", async function () {
       const { registry, owner, controller, other, robotId } = await loadFixture(deployFixture);

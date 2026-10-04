@@ -236,7 +236,7 @@
             "label": "registry",
             "offset": 0,
             "slot": "0",
-            "type": "t_contract(IRobotRegistry)3324",
+            "type": "t_contract(IRobotRegistry)3453",
             "contract": "RobotCommandDispatcher",
             "src": "contracts/RobotCommandDispatcher.sol:23"
           },
@@ -252,7 +252,7 @@
             "label": "_commands",
             "offset": 0,
             "slot": "2",
-            "type": "t_mapping(t_bytes32,t_mapping(t_uint256,t_struct(Command)3056_storage))",
+            "type": "t_mapping(t_bytes32,t_mapping(t_uint256,t_struct(Command)3141_storage))",
             "contract": "RobotCommandDispatcher",
             "src": "contracts/RobotCommandDispatcher.sol:26"
           },
@@ -324,11 +324,11 @@
             "label": "bytes32",
             "numberOfBytes": "32"
           },
-          "t_contract(IRobotRegistry)3324": {
+          "t_contract(IRobotRegistry)3453": {
             "label": "contract IRobotRegistry",
             "numberOfBytes": "20"
           },
-          "t_enum(CommandStatus)3036": {
+          "t_enum(CommandStatus)3121": {
             "label": "enum IRobotCommandDispatcher.CommandStatus",
             "members": [
               "Pending",
@@ -338,7 +338,7 @@
             ],
             "numberOfBytes": "1"
           },
-          "t_mapping(t_bytes32,t_mapping(t_uint256,t_struct(Command)3056_storage))": {
+          "t_mapping(t_bytes32,t_mapping(t_uint256,t_struct(Command)3141_storage))": {
             "label": "mapping(bytes32 => mapping(uint256 => struct IRobotCommandDispatcher.Command))",
             "numberOfBytes": "32"
           },
@@ -346,7 +346,7 @@
             "label": "mapping(bytes32 => uint256)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_struct(Command)3056_storage)": {
+          "t_mapping(t_uint256,t_struct(Command)3141_storage)": {
             "label": "mapping(uint256 => struct IRobotCommandDispatcher.Command)",
             "numberOfBytes": "32"
           },
@@ -354,7 +354,7 @@
             "label": "string",
             "numberOfBytes": "32"
           },
-          "t_struct(Command)3056_storage": {
+          "t_struct(Command)3141_storage": {
             "label": "struct IRobotCommandDispatcher.Command",
             "members": [
               {
@@ -407,7 +407,7 @@
               },
               {
                 "label": "status",
-                "type": "t_enum(CommandStatus)3036",
+                "type": "t_enum(CommandStatus)3121",
                 "offset": 0,
                 "slot": "7"
               }
@@ -421,6 +421,271 @@
           "t_uint32": {
             "label": "uint32",
             "numberOfBytes": "4"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.Ownable2Step": [
+            {
+              "contract": "Ownable2StepUpgradeable",
+              "label": "_pendingOwner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol:29",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "d1bd4cd7b5d17b4c4b1e5bf85c3ad21b2dcd111aa82f9153272eb1f66a71b239": {
+      "address": "0x5172C976aE2dC009Cd931b5CCC83711AF0fcC1B9",
+      "txHash": "0xe4c9f561d6c41b9c6ca84cd117c9dcac584bda291e20e38c1b1a7682b10f0db7",
+      "layout": {
+        "solcVersion": "0.8.27",
+        "storage": [
+          {
+            "label": "_robots",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_mapping(t_bytes32,t_struct(Robot)3263_storage)",
+            "contract": "RobotRegistry",
+            "src": "contracts/RobotRegistry.sol:25"
+          },
+          {
+            "label": "_controllers",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_mapping(t_bytes32,t_mapping(t_address,t_bool))",
+            "contract": "RobotRegistry",
+            "src": "contracts/RobotRegistry.sol:26"
+          },
+          {
+            "label": "_operators",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_mapping(t_bytes32,t_mapping(t_address,t_bool))",
+            "contract": "RobotRegistry",
+            "src": "contracts/RobotRegistry.sol:29"
+          },
+          {
+            "label": "_commandPrices",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_mapping(t_bytes32,t_uint256)",
+            "contract": "RobotRegistry",
+            "src": "contracts/RobotRegistry.sol:30"
+          },
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_mapping(t_bytes32,t_struct(RobotStatus)3314_storage)",
+            "contract": "RobotRegistry",
+            "src": "contracts/RobotRegistry.sol:31"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)307_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(Ownable2StepStorage)13_storage": {
+            "label": "struct Ownable2StepUpgradeable.Ownable2StepStorage",
+            "members": [
+              {
+                "label": "_pendingOwner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)68_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_mapping(t_address,t_bool))": {
+            "label": "mapping(bytes32 => mapping(address => bool))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_struct(Robot)3263_storage)": {
+            "label": "mapping(bytes32 => struct IRobotRegistry.Robot)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_struct(RobotStatus)3314_storage)": {
+            "label": "mapping(bytes32 => struct IRobotRegistry.RobotStatus)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_uint256)": {
+            "label": "mapping(bytes32 => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_string_storage": {
+            "label": "string",
+            "numberOfBytes": "32"
+          },
+          "t_struct(Robot)3263_storage": {
+            "label": "struct IRobotRegistry.Robot",
+            "members": [
+              {
+                "label": "owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "name",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "robotType",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "storageRoot",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "active",
+                "type": "t_bool",
+                "offset": 0,
+                "slot": "4"
+              },
+              {
+                "label": "publicCommands",
+                "type": "t_bool",
+                "offset": 1,
+                "slot": "4"
+              },
+              {
+                "label": "registeredAt",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "5"
+              }
+            ],
+            "numberOfBytes": "192"
+          },
+          "t_struct(RobotStatus)3314_storage": {
+            "label": "struct IRobotRegistry.RobotStatus",
+            "members": [
+              {
+                "label": "online",
+                "type": "t_bool",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "robotConnected",
+                "type": "t_bool",
+                "offset": 1,
+                "slot": "0"
+              },
+              {
+                "label": "battery",
+                "type": "t_uint8",
+                "offset": 2,
+                "slot": "0"
+              },
+              {
+                "label": "updatedAt",
+                "type": "t_uint64",
+                "offset": 3,
+                "slot": "0"
+              },
+              {
+                "label": "reporter",
+                "type": "t_address",
+                "offset": 11,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
           }
         },
         "namespaces": {

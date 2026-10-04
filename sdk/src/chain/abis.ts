@@ -300,6 +300,43 @@ export const REGISTRY_ABI = [
     "inputs": [
       {
         "indexed": true,
+        "internalType": "bytes32",
+        "name": "robotId",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "reporter",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "online",
+        "type": "bool"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "robotConnected",
+        "type": "bool"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint8",
+        "name": "battery",
+        "type": "uint8"
+      }
+    ],
+    "name": "StatusReported",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
         "internalType": "address",
         "name": "implementation",
         "type": "address"
@@ -432,6 +469,52 @@ export const REGISTRY_ABI = [
           }
         ],
         "internalType": "struct IRobotRegistry.Robot",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "robotId",
+        "type": "bytes32"
+      }
+    ],
+    "name": "getStatus",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "bool",
+            "name": "online",
+            "type": "bool"
+          },
+          {
+            "internalType": "bool",
+            "name": "robotConnected",
+            "type": "bool"
+          },
+          {
+            "internalType": "uint8",
+            "name": "battery",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint64",
+            "name": "updatedAt",
+            "type": "uint64"
+          },
+          {
+            "internalType": "address",
+            "name": "reporter",
+            "type": "address"
+          }
+        ],
+        "internalType": "struct IRobotRegistry.RobotStatus",
         "name": "",
         "type": "tuple"
       }
@@ -625,6 +708,34 @@ export const REGISTRY_ABI = [
   {
     "inputs": [],
     "name": "renounceOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "robotId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bool",
+        "name": "online",
+        "type": "bool"
+      },
+      {
+        "internalType": "bool",
+        "name": "robotConnected",
+        "type": "bool"
+      },
+      {
+        "internalType": "uint8",
+        "name": "battery",
+        "type": "uint8"
+      }
+    ],
+    "name": "reportStatus",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
