@@ -6,6 +6,12 @@ export interface NetworkConfig {
 		registry: `0x${string}`;
 		dispatcher: `0x${string}`;
 	};
+	/**
+	 * Offer only MetaMask in the wallet modal, and name it on the stage and in
+	 * the switch step. For a network the other wallets can't reach from a
+	 * phone. Leave unset where they can, and the full list shows.
+	 */
+	metaMaskOnly?: boolean;
 }
 
 export const zeroGTestnet = defineChain({
@@ -46,7 +52,10 @@ export const networks: Record<number, NetworkConfig> = {
 		contracts: {
 			registry: '0x291162e93D7A80Eb8F738882a28a7a8A5FBA73bb',
 			dispatcher: '0x418bA7C231dac8Ef58b534BeE6adC50E703AA753'
-		}
+		},
+		// Phone wallets over WalletConnect approve only networks they know, and
+		// Rabby, Trust and Bitget don't know Galileo. MetaMask adds it.
+		metaMaskOnly: true
 	}
 	// [zeroGMainnet.id]: {
 	// 	chain: zeroGMainnet,

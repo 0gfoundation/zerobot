@@ -94,18 +94,20 @@ function WalletModal({ onClose }: { onClose: () => void }) {
 	const cleanups = useRef<(() => void)[]>([]);
 
 	const metaMask = connectors.find((c) => c.type === 'metaMask');
-	const wc = connectors.find((c) => c.type === 'walletConnect');
+	// On a network only MetaMask reaches from a phone, it's the one row
+	const metaMaskOnly = defaultNetwork.metaMaskOnly === true;
+	const wc = metaMaskOnly ? undefined : connectors.find((c) => c.type === 'walletConnect');
 	const injectedIds = connectors.filter((c) => c.type === 'injected').map((c) => c.id);
 	// Browser wallets that announced themselves, on the hub's allowlist and
 	// in its order. MetaMask is its own row through the SDK.
 	const announced = connectors
-		.filter((c) => c.type === 'injected' && walletRank(c.id) > 0)
+		.filter((c) => !metaMaskOnly && c.type === 'injected' && walletRank(c.id) > 0)
 		.sort((a, b) => walletRank(a.id) - walletRank(b.id));
 	// The generic fallback, for a wallet older than EIP-6963, only when
 	// nothing announced and a non-MetaMask provider exists
 	const ethereum = (window as { ethereum?: { isMetaMask?: boolean } }).ethereum;
 	const generic =
-		announced.length === 0 && ethereum && !ethereum.isMetaMask
+		!metaMaskOnly && announced.length === 0 && ethereum && !ethereum.isMetaMask
 			? connectors.find((c) => c.id === 'injected')
 			: undefined;
 	const phoneWallets = isTouch && wc ? walletsNotAnnounced(injectedIds) : [];
