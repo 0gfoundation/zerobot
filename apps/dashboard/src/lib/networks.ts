@@ -24,21 +24,21 @@ export const zeroGTestnet = defineChain({
 	testnet: true
 });
 
-// Mainnet placeholder — uncomment when ready
-// export const zeroGMainnet = defineChain({
-// 	id: 16661,
-// 	name: '0G Mainnet',
-// 	nativeCurrency: { name: '0G', symbol: '0G', decimals: 18 },
-// 	rpcUrls: {
-// 		default: {
-// 			http: ['https://evmrpc.0g.ai'],
-// 			webSocket: ['wss://evmrpc-ws.0g.ai/']
-// 		}
-// 	},
-// 	blockExplorers: {
-// 		default: { name: '0G Explorer', url: 'https://chainscan.0g.ai' }
-// 	}
-// });
+/**
+ * 0G mainnet. No contracts here yet, so not in `networks`; only offered to
+ * wallets when connecting (`walletChains`).
+ */
+export const zeroGMainnet = defineChain({
+	id: 16661,
+	name: '0G Mainnet',
+	nativeCurrency: { name: '0G', symbol: '0G', decimals: 18 },
+	rpcUrls: {
+		default: { http: ['https://evmrpc.0g.ai'] }
+	},
+	blockExplorers: {
+		default: { name: '0G Explorer', url: 'https://chainscan.0g.ai' }
+	}
+});
 
 export const networks: Record<number, NetworkConfig> = {
 	[zeroGTestnet.id]: {
@@ -59,3 +59,13 @@ export const networks: Record<number, NetworkConfig> = {
 
 export const supportedChains = Object.values(networks).map((n) => n.chain) as [Chain, ...Chain[]];
 export const defaultNetwork = networks[zeroGTestnet.id];
+
+/**
+ * The chains a wallet is asked for when connecting. A WalletConnect session
+ * can't start unless the wallet knows one of them, and phone wallets with 0G
+ * built in (Bitget, OKX, ...) have mainnet but not Galileo: offered Galileo
+ * alone, Bitget kept asking to add it and never connected. With mainnet
+ * offered too the session starts, and the pages then switch to Galileo,
+ * which lets the wallet add it.
+ */
+export const walletChains = [...supportedChains, zeroGMainnet] as [Chain, ...Chain[]];
