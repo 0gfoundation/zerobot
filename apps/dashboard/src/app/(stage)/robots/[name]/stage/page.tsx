@@ -30,7 +30,9 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 	const { name } = use(params);
 	const robot = useRobot(name, { live: true });
 	const data = robot.data;
-	const { entries, error } = useQueue(data?.robotId, 12);
+	// The operator checks for commands every 500ms; matching it means the model
+	// starts each move when the robot does
+	const { entries, error } = useQueue(data?.robotId, { history: 12, pollMs: 500 });
 	const viewer = useRef<RobotViewerHandle>(null);
 	const [viewerReady, setViewerReady] = useState(false);
 	const [timelines, setTimelines] = useState<Map<number, Timeline>>(new Map());

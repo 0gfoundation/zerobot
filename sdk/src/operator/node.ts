@@ -80,8 +80,16 @@ class RobotLinkLost extends Error {}
  */
 const NO_REPLY_SILENCE_MS = 2000;
 
-/** How often to check a paused queue for the resume, in ms */
-const PAUSE_POLL_MS = 2000;
+/**
+ * How often to read the queue pause from the chain, in ms. In the
+ * background rather than before each command, so starting a move waits on
+ * no chain read and the robot keeps time with the stage. A pause takes ~10s
+ * to confirm on-chain anyway.
+ */
+const PAUSE_POLL_MS = 1000;
+
+/** How often a held command looks at the last pause reading, in ms */
+const PAUSE_WAIT_MS = 250;
 
 /** Waits between reconnect attempts, in ms; the last repeats */
 const RECONNECT_BACKOFF_MS = [1000, 2000, 5000, 10_000];
@@ -121,6 +129,7 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
   private reconnecting = false;
   private robotWaiters: Array<() => void> = [];
   private queuePaused = false;
+  private checkingPause = false;
   /**
    * When the queue last resumed, in ms. Expiry counts from here for commands
    * paid before it, so a long pause doesn't expire what people paid for.
@@ -221,10 +230,13 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
       // Pages may have seen nothing for a while
       this.publishStatus();
     });
+    // Know the pause before any command can start
+    await this.checkPaused();
     await this.listener.start();
     await this.recoverPending();
 
     this.timers.push(
+      setInterval(() => void this.checkPaused(), PAUSE_POLL_MS),
       setInterval(() => this.checkRobot(), 1000),
       setInterval(() => this.publishStatus(), this.statusIntervalMs),
     );
@@ -384,10 +396,13 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
   }
 
   /**
-   * Whether the queue is paused on-chain, read fresh. A failed read keeps
-   * the last answer: the chain is down, so receipts are stuck anyway.
+   * Read whether the queue is paused on-chain. A failed read keeps the last
+   * answer: the chain is down, so receipts are stuck anyway.
    */
   private async checkPaused(): Promise<boolean> {
+    // A slow RPC can outlast the interval; one read at a time keeps the order
+    if (this.checkingPause) return this.queuePaused;
+    this.checkingPause = true;
     try {
       const paused = await this.client.isQueuePaused(this.robotId);
       if (paused !== this.queuePaused) {
@@ -397,6 +412,8 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
       }
     } catch {
       // Keep the last answer
+    } finally {
+      this.checkingPause = false;
     }
     return this.queuePaused;
   }
@@ -413,8 +430,8 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     for (;;) {
       await this.waitForRobot();
       if (!this.running) return;
-      if (!(await this.checkPaused())) break;
-      await sleep(PAUSE_POLL_MS);
+      if (!this.queuePaused) break;
+      await sleep(PAUSE_WAIT_MS);
     }
     if (!this.running) return;
     if (this.expired(cmd)) {
