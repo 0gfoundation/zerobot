@@ -77,7 +77,7 @@ export function MoveReceipts({
 						>
 							<span aria-hidden className={`size-2 shrink-0 rounded-full ${DOT[view.tone]}`} />
 							<span className="min-w-0 flex-1 truncate font-medium">
-								{emoji} {label}
+								{label} {emoji}
 							</span>
 							<span className="shrink-0 text-sm text-ink-soft">{view.status}</span>
 							<span aria-hidden className={`shrink-0 text-ink-muted transition ${isOpen ? 'rotate-180' : ''}`}>

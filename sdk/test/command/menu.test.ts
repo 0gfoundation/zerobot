@@ -29,6 +29,15 @@ describe("resolveMenu", () => {
     expect(item.description).toBe("Waves");
   });
 
+  it("takes the schema's emoji unless the item sets one", () => {
+    const [sit, hello] = resolveMenu(
+      { items: [{ command: "Sit" }, { command: "Hello", emoji: "🙌" }] },
+      "go2_pro",
+    );
+    expect(sit.emoji).toBe("🪑");
+    expect(hello.emoji).toBe("🙌");
+  });
+
   it("falls back to the schema name when there is no label", () => {
     const [item] = resolveMenu({ items: [{ command: "Dance1" }] }, "go2_pro");
     expect(item.label).toBe("Dance1");
