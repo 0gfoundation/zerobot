@@ -15,6 +15,11 @@ export function menuFor(name: string): RobotMenu | undefined {
 	return MENUS[name];
 }
 
+/** What the public calls a robot, e.g. "Larry", from its menu, else its registered name */
+export function displayNameFor(name: string): string {
+	return MENUS[name]?.displayName ?? name;
+}
+
 /** Robot ids are the keccak256 of the name chosen at registration. */
 export function robotIdFor(name: string): `0x${string}` {
 	return keccak256(toBytes(name));
