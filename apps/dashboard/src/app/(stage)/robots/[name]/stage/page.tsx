@@ -27,7 +27,7 @@ const SMOOTHING_MS = 60;
  */
 export default function StagePage({ params }: { params: Promise<{ name: string }> }) {
 	const { name } = use(params);
-	const robot = useRobot(name);
+	const robot = useRobot(name, { live: true });
 	const data = robot.data;
 	const { entries, error } = useQueue(data?.robotId, 12);
 	const viewer = useRef<RobotViewerHandle>(null);
@@ -177,14 +177,24 @@ export default function StagePage({ params }: { params: Promise<{ name: string }
 			</section>
 
 			<aside className="flex min-h-0 flex-col">
-				<figure className="rounded-3xl bg-white p-4">
-					<div dangerouslySetInnerHTML={{ __html: qr }} />
-					<figcaption className="mt-1 text-center font-mono text-lg text-black">
-						{pageUrl.replace(/^https?:\/\//, '')}
-					</figcaption>
-				</figure>
-				<p className="mt-4 text-2xl font-semibold">Scan to make {data.displayName} move</p>
-				<p className="mt-1 text-ink-muted">{formatEther(data.price)} testnet 0G per move</p>
+				{data.robot.publicCommands ? (
+					<>
+						<figure className="rounded-3xl bg-white p-4">
+							<div dangerouslySetInnerHTML={{ __html: qr }} />
+							<figcaption className="mt-1 text-center font-mono text-lg text-black">
+								{pageUrl.replace(/^https?:\/\//, '')}
+							</figcaption>
+						</figure>
+						<p className="mt-4 text-2xl font-semibold">Scan to make {data.displayName} move</p>
+						<p className="mt-1 text-ink-muted">{formatEther(data.price)} testnet 0G per move</p>
+					</>
+				) : (
+					// Paused payments hide the QR, so nobody scans into a page that can't take them
+					<div className="flex aspect-square flex-col items-center justify-center rounded-3xl border border-hairline p-8 text-center">
+						<p className="text-4xl font-semibold">Paused</p>
+						<p className="mt-3 text-xl text-ink-muted">{data.displayName} isn&apos;t taking new moves right now. Back soon!</p>
+					</div>
+				)}
 
 				<h2 className="mt-8 text-sm font-medium uppercase tracking-wider text-ink-muted">Up next</h2>
 				<ol className="mt-2 space-y-2 text-xl">

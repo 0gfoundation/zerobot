@@ -16,8 +16,14 @@ export interface PublicRobot {
 	displayName: string;
 }
 
-/** A robot by name, with its price and menu. `data` is null if no robot has that name. */
-export function useRobot(name: string) {
+/** How often a page that follows a robot live rereads its settings, so a pause shows within seconds */
+const LIVE_REFETCH_MS = 10_000;
+
+/**
+ * A robot by name, with its price and menu. `data` is null if no robot has
+ * that name. `live` rereads it every few seconds, for pages open for hours.
+ */
+export function useRobot(name: string, { live = false }: { live?: boolean } = {}) {
 	return useQuery({
 		queryKey: ['robot', name],
 		queryFn: async (): Promise<PublicRobot | null> => {
@@ -35,6 +41,7 @@ export function useRobot(name: string) {
 				displayName: menu?.displayName ?? robot.name
 			};
 		},
-		staleTime: 30_000
+		staleTime: 30_000,
+		refetchInterval: live ? LIVE_REFETCH_MS : false
 	});
 }

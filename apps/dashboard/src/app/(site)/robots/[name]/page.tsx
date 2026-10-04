@@ -29,15 +29,16 @@ function isRejection(err: unknown): boolean {
 
 export default function RobotPage({ params }: { params: Promise<{ name: string }> }) {
 	const { name } = use(params);
-	const robot = useRobot(name);
+	const robot = useRobot(name, { live: true });
 	const { address, chainId } = useConnection();
 	const { data: wallet } = useWalletClient();
 	const balance = useBalance({ address, chainId: defaultNetwork.chain.id, query: { refetchInterval: 4000 } });
 	const { entries } = useQueue(robot.data?.robotId, 50);
 	const status = useRobotStatus(robot.data?.robotId);
 	// Only take payment when the operator and robot are both up, or the move
-	// would wait in the queue and expire
-	const available = status.data?.robotOnline ?? false;
+	// would wait in the queue and expire, and the owner hasn't paused payments
+	const paused = robot.data ? !robot.data.robot.publicCommands : false;
+	const available = (status.data?.robotOnline ?? false) && !paused;
 
 	const [note, setNote] = useState('');
 	const [move, setMove] = useState<ResolvedMenuItem | null>(null);
@@ -126,7 +127,7 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 
 	const displayName = data.displayName;
 
-	if (!data.robot.active || !data.robot.publicCommands || data.menu.length === 0) {
+	if (!data.robot.active || data.menu.length === 0) {
 		return <p>{displayName} isn&apos;t taking requests right now.</p>;
 	}
 
@@ -138,7 +139,14 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 				screen while {displayName} does it.
 			</p>
 
-			<Availability displayName={displayName} status={status.data} className="mt-4" />
+			{paused ? (
+				<Notice tone="warning" title="Moves are paused" className="mt-4">
+					{displayName} isn&apos;t taking new moves for a moment. Moves already paid for still run. This page
+					updates by itself.
+				</Notice>
+			) : (
+				<Availability displayName={displayName} status={status.data} className="mt-4" />
+			)}
 
 			<MoveReceipts
 				cards={receipts.map((receipt): ReceiptCard => {
@@ -242,7 +250,9 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 							noteBytes > MAX_NOTE_BYTES
 						}
 					>
-						{!status.data
+						{paused
+							? 'Paused'
+							: !status.data
 							? `Checking ${displayName}…`
 							: available
 								? `Pay ${formatEther(data.price)} 0G`
