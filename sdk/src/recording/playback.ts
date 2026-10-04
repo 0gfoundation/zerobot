@@ -212,6 +212,41 @@ function alignRuns(runs: RecordingRun[]): { lags: number[]; reference: number } 
   return { lags: raw.map((lag, i) => (signals[i] ? lag - raw[reference] : 0)), reference };
 }
 
+/** How far a joint sample may land from its run's rhythm before it counts as late */
+const RHYTHM_TOLERANCE_MS = 25;
+
+/**
+ * A run's joint samples, without the ones that arrived late. The robot sends
+ * them on a steady ~1 s rhythm, but they're stamped on arrival, so one held
+ * up on the network carries an older pose at a later time and makes the
+ * merged legs snap. The run's own period and phase come from its samples:
+ * the median gap, and the phase most samples agree on.
+ */
+export function onRhythm(messages: RecordedMessage[]): RecordedMessage[] {
+  if (messages.length < 4) return messages;
+  const gaps = messages
+    .slice(1)
+    .map((m, i) => m.t - messages[i].t)
+    .filter((g) => g > 500 && g < 1500)
+    .sort((a, b) => a - b);
+  if (gaps.length < 3) return messages;
+  const period = gaps[Math.floor(gaps.length / 2)];
+  const phase = (t: number) => ((t % period) + period) % period;
+  const apart = (a: number, b: number) => {
+    const d = Math.abs(a - b);
+    return Math.min(d, period - d);
+  };
+  const phases = messages.map((m) => phase(m.t));
+  // The phase with the most samples near it, measured round the circle
+  let best = phases[0];
+  let bestCount = -1;
+  for (const p of phases) {
+    const count = phases.filter((q) => apart(p, q) <= RHYTHM_TOLERANCE_MS).length;
+    if (count > bestCount) [best, bestCount] = [p, count];
+  }
+  return messages.filter((_, i) => apart(phases[i], best) <= RHYTHM_TOLERANCE_MS);
+}
+
 export function buildTimeline(file: RecordingFile): Timeline {
   const runs: RecordingRun[] = file.runs ?? [
     { durationMs: file.durationMs ?? 0, streams: file.streams ?? {}, events: file.events ?? [] }
@@ -221,7 +256,7 @@ export function buildTimeline(file: RecordingFile): Timeline {
 
   const joints: JointSample[] = runs
     .flatMap((run, i) =>
-      (run.streams[LOW_STATE] ?? []).map((m) => ({
+      onRhythm(run.streams[LOW_STATE] ?? []).map((m) => ({
         t: m.t - lags[i],
         q: (m.data?.motor_state ?? []).slice(0, motorCount).map((s: { q: number }) => s.q),
         run: i
