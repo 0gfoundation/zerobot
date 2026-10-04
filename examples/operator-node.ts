@@ -65,6 +65,10 @@ async function main(): Promise<void> {
     console.log("Operator node started. Listening for on-chain commands...");
   });
 
+  operator.on("chainRecovered", () => {
+    console.log("Chain reachable again");
+  });
+
   operator.on("status", (s) => {
     const battery = s.battery === undefined ? "" : `, battery ${s.battery}%`;
     console.log(`Robot ${s.robotConnected ? "connected" : "disconnected, queue paused"}${battery}`);
@@ -88,6 +92,12 @@ async function main(): Promise<void> {
 
   operator.on("error", (err) => {
     console.error("Error:", err.message);
+  });
+
+  // A long-running operator shouldn't die on a stray network error in a
+  // library; log it and keep serving the queue
+  process.on("unhandledRejection", (err) => {
+    console.error("Unexpected error (still running):", err instanceof Error ? err.message : err);
   });
 
   // Handle graceful shutdown

@@ -1,5 +1,5 @@
 import { EventEmitter } from "eventemitter3";
-import { NonceManager, type Contract, type ContractTransactionResponse } from "ethers";
+import type { ContractTransactionResponse } from "ethers";
 import { Go2Connection } from "../robot/connection.js";
 import { RtcTopic } from "../robot/constants.js";
 import { ChainClient, UNKNOWN_BATTERY } from "../chain/client.js";
@@ -27,6 +27,8 @@ export interface OperatorNodeEvents {
   ) => void;
   /** The robot link came up or went down, or the battery level changed */
   status: (status: OperatorStatus) => void;
+  /** The chain RPC answers again after an outage reported through `error` */
+  chainRecovered: () => void;
   error: (error: Error) => void;
 }
 
@@ -118,10 +120,13 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
   // Receipts and status reports are broadcast one at a time from the same
   // key, each without waiting for the previous to confirm. The public RPC
   // takes ~10s to return a receipt, so waiting would leave the on-chain
-  // queue status far behind the robot. NonceManager counts nonces locally
-  // because that RPC's view of the pending nonce lags too.
-  private dispatcherWriter: Contract;
-  private registryWriter: Contract;
+  // queue status far behind the robot. Nonces are counted here because that
+  // RPC's view of the pending nonce lags too. Not ethers' NonceManager: it
+  // leaves its nonce lookup unawaited when building the transaction fails,
+  // and while the network is down that rejection crashes the process.
+  private nextNonce: number | null = null;
+  /** One past the last nonce broadcast for certain. A lagging RPC can report a lower pending nonce. */
+  private minNonce = 0;
   private sends: Promise<void> = Promise.resolve();
   private confirmations = new Set<Promise<void>>();
 
@@ -140,9 +145,6 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     if (!this.client.signer) {
       throw new Error("OperatorNode: chainConfig needs the wallet of the robot's owner or an operator, to submit receipts");
     }
-    const signer = new NonceManager(this.client.signer);
-    this.dispatcherWriter = this.client.dispatcher.connect(signer) as Contract;
-    this.registryWriter = this.client.registry.connect(signer) as Contract;
     this.allowed = options.allowedApiIds ? new Set(options.allowedApiIds) : null;
     this.settleMs = options.settleMs ?? 1000;
     this.recoverCount = options.recoverCount ?? 50;
@@ -190,7 +192,14 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     // Listen first, then recover, so a command landing in between is seen
     // by at least one of them. `seen` drops the duplicates.
     this.listener.on("command", (cmd) => this.enqueue(cmd));
-    this.listener.on("error", (err) => this.emit("error", err));
+    this.listener.on("error", (err) =>
+      this.emit("error", new Error(`Chain unreachable, retrying: ${err.message}`)),
+    );
+    this.listener.on("recovered", () => {
+      this.emit("chainRecovered");
+      // Pages may have seen nothing for a while
+      this.publishStatus();
+    });
     await this.listener.start();
     await this.recoverPending();
 
@@ -454,8 +463,13 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
 
   private finish(cmd: OnChainCommand, success: boolean, resultData: string): void {
     this.emit("commandExecuted", cmd, success, resultData);
-    this.send(`receipt for nonce ${cmd.nonce}`, () =>
-      this.dispatcherWriter.submitReceipt(this.robotId, cmd.nonce, success, resultData),
+    // Retried until it lands: a lost receipt leaves the command pending,
+    // and the next start would run the move again
+    this.send(
+      `receipt for nonce ${cmd.nonce}`,
+      (nonce) =>
+        this.client.dispatcher.submitReceipt(this.robotId, cmd.nonce, success, resultData, { nonce }),
+      true,
     );
   }
 
@@ -470,20 +484,30 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
   private chainStatusPublisher(): StatusPublisher {
     return {
       publish: async (robotId, status) => {
-        this.send("status report", () =>
-          this.registryWriter.reportStatus(
+        this.send("status report", (nonce) =>
+          this.client.registry.reportStatus(
             robotId,
             status.online,
             status.robotConnected,
             status.battery ?? UNKNOWN_BATTERY,
+            { nonce },
           ),
         );
       },
     };
   }
 
-  /** Broadcast a transaction after the previous one, without waiting for either to confirm */
-  private send(label: string, write: () => Promise<ContractTransactionResponse>): void {
+  /**
+   * Broadcast a transaction after the previous one, without waiting for
+   * either to confirm. With `retry`, a failed broadcast is tried again with
+   * backoff until it lands or the operator stops; later sends wait behind it,
+   * so receipts stay in order.
+   */
+  private send(
+    label: string,
+    write: (nonce: number) => Promise<ContractTransactionResponse>,
+    retry = false,
+  ): void {
     const fail = (err: unknown): void => {
       this.emit(
         "error",
@@ -491,17 +515,39 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
       );
     };
     this.sends = this.sends.then(async () => {
-      try {
-        const tx = await write();
-        const confirmation: Promise<void> = waitForReceipt(tx)
-          .then(() => undefined, fail)
-          .finally(() => this.confirmations.delete(confirmation));
-        this.confirmations.add(confirmation);
-      } catch (err) {
-        fail(err);
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const nonce =
+            this.nextNonce ?? Math.max(await this.client.signer!.getNonce("pending"), this.minNonce);
+          const tx = await write(nonce);
+          this.nextNonce = nonce + 1;
+          this.minNonce = nonce + 1;
+          const confirmation: Promise<void> = waitForReceipt(tx)
+            .then(() => undefined, fail)
+            .finally(() => this.confirmations.delete(confirmation));
+          this.confirmations.add(confirmation);
+          return;
+        } catch (err) {
+          // Nothing may have gone out, so re-read the nonce from the chain
+          // next time rather than sign past a gap that never mines
+          this.nextNonce = null;
+          // A broadcast can land even when its response is lost
+          if (isAlreadyProcessed(err)) return;
+          if (attempt === 0) fail(err);
+          if (!retry || !this.running) return;
+          await sleep(RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)]);
+        }
       }
     });
   }
+}
+
+/** Waits between attempts at a failed receipt, in ms; the last repeats */
+const RETRY_BACKOFF_MS = [2000, 5000, 15_000];
+
+function isAlreadyProcessed(err: unknown): boolean {
+  const e = err as { shortMessage?: string; reason?: string; message?: string };
+  return /Command already processed/.test(`${e?.reason ?? ""} ${e?.shortMessage ?? ""} ${e?.message ?? ""}`);
 }
 
 function sleep(ms: number): Promise<void> {
