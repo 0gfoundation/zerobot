@@ -9,7 +9,7 @@ import { resolveSigner } from "../chain/adapter.js";
  * AI broker for resolving natural language prompts into robot commands
  * via 0G Compute Network.
  *
- * Uses the @0glabs/0g-serving-broker package to handle authentication,
+ * Uses the @0gfoundation/0g-compute-ts-sdk package to handle authentication,
  * payment, and inference requests through the 0G decentralized compute network.
  */
 export class AIBroker {
@@ -38,24 +38,24 @@ export class AIBroker {
    * before any `resolvePrompt` call.** Subsequent `resolvePrompt` calls
    * consume 0G Compute funds from the configured wallet.
    *
-   * @throws If `@0glabs/0g-serving-broker` is not installed.
+   * @throws If `@0gfoundation/0g-compute-ts-sdk` is not installed.
    * @throws If no provider is found for the configured model.
    */
   async initialize(): Promise<void> {
     let createBroker: any;
     try {
-      // Optional peer dependency. The specifier is assembled at runtime so
-      // browser bundlers can't statically resolve it (mirrors the pattern in
-      // robot/platform.ts for node:module). At runtime in Node when the
-      // package is installed it loads normally; otherwise the catch below
-      // produces a clear "install ..." error.
-      const brokerSpec = "@0glabs/" + "0g-serving-broker";
+      // Optional peer dependency, loaded only here. The ignore comments keep
+      // bundlers (Vite, webpack, Turbopack) from resolving it at build time,
+      // where a missing package is a warning in every app that imports the
+      // SDK. At runtime in Node with the package installed it loads
+      // normally; otherwise the catch below says what to install.
+      const brokerSpec = "@0gfoundation/0g-compute-ts-sdk";
       // @ts-ignore — optional peer dependency, loaded dynamically
-      const module = await import(/* @vite-ignore */ brokerSpec);
+      const module = await import(/* @vite-ignore */ /* webpackIgnore: true */ /* turbopackIgnore: true */ brokerSpec);
       createBroker = module.createZGComputeNetworkBroker;
     } catch {
       throw new Error(
-        "0G Compute broker not available. Install: npm install @0glabs/0g-serving-broker",
+        "0G Compute broker not available. Install: npm install @0gfoundation/0g-compute-ts-sdk",
       );
     }
 
