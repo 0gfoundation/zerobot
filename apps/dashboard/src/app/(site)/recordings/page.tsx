@@ -1,10 +1,18 @@
 'use client';
 
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
-import { buildTimeline, samplePose, type RecordingFile, type Timeline } from '@0g-foundation/zerobot-sdk';
+import {
+	GO2_SPORT_SCHEMAS,
+	buildTimeline,
+	samplePose,
+	type CommandSchema,
+	type RecordingFile,
+	type Timeline
+} from '@0g-foundation/zerobot-sdk';
 import { Button } from '@0gfoundation/0g-ui/shell';
 import { RobotViewer, type RobotViewerHandle } from '@/components/robot-viewer';
 import { LOCAL_MODE } from '@/lib/mode';
+import { playbackTime, playedDuration } from '@/lib/schedule';
 import type { RecordingListing } from '@/lib/server/recordings';
 
 const POLL_MS = 1500;
@@ -20,6 +28,9 @@ const toggle = (on: boolean) =>
 	`rounded-full border px-2 py-1 text-xs ${on ? 'border-ink' : 'border-hairline text-ink-soft hover:border-hairline-strong'}`;
 
 /** Plays back `examples/record-commands.ts` output and follows new runs live. Local mode only. */
+/** How long the player holds the end of an exit move before looping */
+const EXIT_TAIL_MS = 500;
+
 export default function RecordingsPage() {
 	const [recordings, setRecordings] = useState<RecordingListing[]>([]);
 	const [dir, setDir] = useState('');
@@ -38,7 +49,18 @@ export default function RecordingsPage() {
 	const viewer = useRef<RobotViewerHandle>(null);
 
 	// The animation loop and poller read these without re-subscribing
-	const state = useRef({ follow, selected, loadedMtime: 0, timeline, playing, speed, smoothingMs, t: 0 });
+	const state = useRef({
+		follow,
+		selected,
+		loadedMtime: 0,
+		timeline,
+		playing,
+		speed,
+		smoothingMs,
+		t: 0,
+		// A move with an exit move (Sit, then RiseSit) plays as the stage plays it
+		exit: null as { schema: CommandSchema; exit: CommandSchema } | null
+	});
 	state.current = { ...state.current, follow, selected, timeline, playing, speed, smoothingMs };
 
 	const isSelected = (r: RecordingListing) => selected?.robot === r.robot && selected?.name === r.name;
@@ -67,7 +89,14 @@ export default function RecordingsPage() {
 				if (state.current.selected?.robot !== s.robot || state.current.selected?.name !== s.name) return;
 				const isUpdate = state.current.loadedMtime !== 0;
 				state.current.loadedMtime = mtimeMs;
-				const built = buildTimeline(file);
+				// The recorder sends the exit move after the recording, so like the stage,
+				// play the move back reversed for it rather than end mid-pose
+				const schema = file.robot === 'go2' ? GO2_SPORT_SCHEMAS.find((c) => c.name === file.command) : undefined;
+				const exit =
+					schema?.exitApiId !== undefined ? GO2_SPORT_SCHEMAS.find((c) => c.apiId === schema.exitApiId) : undefined;
+				state.current.exit = schema && exit ? { schema, exit } : null;
+				const recorded = buildTimeline(file);
+				const built = schema && exit ? { ...recorded, endMs: playedDuration(schema, exit) + EXIT_TAIL_MS } : recorded;
 				setTimeline(built);
 				setLoadError(null);
 				if (isUpdate) setUpdatedAt(Date.now());
@@ -108,7 +137,9 @@ export default function RecordingsPage() {
 				if (state.current.t > tl.endMs) state.current.t = tl.startMs;
 			}
 			if (tl) {
-				const pose = samplePose(tl, state.current.t, smooth);
+				const ex = state.current.exit;
+				const at = ex ? playbackTime(ex.schema, ex.exit, state.current.t) : state.current.t;
+				const pose = samplePose(tl, at, smooth);
 				if (pose) viewer.current?.setPose(pose);
 			}
 			// The readout and coverage strip only need a few updates a second
