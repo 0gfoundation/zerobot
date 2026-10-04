@@ -36,3 +36,18 @@ export const ROBOT_TYPE_LABELS: Record<string, string> = {
 export function robotFamily(robotType: string): 'go2' | 'g1' {
 	return robotType.startsWith('g1') ? 'g1' : 'go2';
 }
+
+/**
+ * Renders of the robot mid-move, by family and command, from the 3D model
+ * posed by the move's recording. A move without one shows its emoji.
+ */
+const POSE_IMAGES: Record<'go2' | 'g1', ReadonlySet<string>> = {
+	go2: new Set(['hello', 'sit', 'stretch']),
+	g1: new Set()
+};
+
+export function poseImageFor(robotType: string, command: string): string | undefined {
+	const family = robotFamily(robotType);
+	const name = command.toLowerCase();
+	return POSE_IMAGES[family].has(name) ? `/images/moves/${family}/${name}.webp` : undefined;
+}
