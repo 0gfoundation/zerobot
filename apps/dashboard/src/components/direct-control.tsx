@@ -19,13 +19,11 @@ const GO2_ACTIONS: [number, string][] = [
 	[1017, 'Stretch'],
 	[1022, 'Dance1'],
 	[1023, 'Dance2'],
-	[1033, 'WiggleHips'],
 	[1036, 'FingerHeart'],
+	[1029, 'Scrape'],
 	[1020, 'Content'],
-	[1021, 'Wallow'],
-	[1305, 'MoonWalk'],
 	[1030, 'FrontFlip'],
-	[1301, 'Handstand']
+	[2044, 'Handstand']
 ];
 const G1_MODES: [number, string][] = [
 	[4, 'Stand'],

@@ -1,4 +1,8 @@
 /** Go2 Pro sport command API IDs */
+/**
+ * Go2 sport API ids, as firmware 1.1.7+ accepts them (Unitree's sport_api.hpp).
+ * Older ids for removed commands (WiggleHips, Wallow, ...) return status 3203.
+ */
 export enum SportCommand {
   Damp = 1001,
   BalanceStand = 1002,
@@ -10,35 +14,22 @@ export enum SportCommand {
   Move = 1008,
   Sit = 1009,
   RiseSit = 1010,
-  SwitchGait = 1011,
-  Trigger = 1012,
-  BodyHeight = 1013,
-  FootRaiseHeight = 1014,
   SpeedLevel = 1015,
   Hello = 1016,
   Stretch = 1017,
-  TrajectoryFollow = 1018,
   ContinuousGait = 1019,
   Content = 1020,
-  Wallow = 1021,
   Dance1 = 1022,
   Dance2 = 1023,
+  Scrape = 1029,
   FrontFlip = 1030,
   FrontJump = 1031,
   FrontPounce = 1032,
-  WiggleHips = 1033,
   FingerHeart = 1036,
-  StandOut = 1039,
-  LeftFlip = 1042,
-  RightFlip = 1043,
-  BackFlip = 1044,
-  Standup2 = 1050,
-  CrossWalk = 1051,
-  Handstand = 1301,
-  CrossStep = 1302,
-  OnesidedStep = 1303,
-  Bound = 1304,
-  MoonWalk = 1305,
+  LeftFlip = 2041,
+  BackFlip = 2043,
+  Handstand = 2044,
+  CrossStep = 2051,
 }
 
 /** VUI command API IDs (LED, volume, brightness) */

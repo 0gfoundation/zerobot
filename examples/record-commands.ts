@@ -320,6 +320,7 @@ const LIE_DOWN_MS = 2500;
  */
 const GO2_EXIT_COMMANDS: Record<string, { apiId: SportCommand; waitMs: number }> = {
   Sit: { apiId: SportCommand.RiseSit, waitMs: 2500 },
+  StandDown: { apiId: SportCommand.StandUp, waitMs: 2500 },
 };
 
 /**
