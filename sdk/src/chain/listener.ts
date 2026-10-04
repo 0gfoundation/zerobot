@@ -4,6 +4,8 @@ import type { OnChainCommand } from "../types/chain.js";
 
 export interface ChainListenerEvents {
   command: (command: OnChainCommand) => void;
+  /** Polling works again after `error`. Errors are emitted once per outage. */
+  recovered: () => void;
   error: (error: Error) => void;
 }
 
@@ -19,6 +21,7 @@ export class ChainListener extends EventEmitter<ChainListenerEvents> {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private nextNonce = 0n;
   private listening = false;
+  private failing = false;
 
   constructor(
     private client: ChainClient,
@@ -47,8 +50,16 @@ export class ChainListener extends EventEmitter<ChainListenerEvents> {
     const tick = async () => {
       try {
         await this.poll();
+        if (this.failing) {
+          this.failing = false;
+          this.emit("recovered");
+        }
       } catch (err) {
-        this.emit("error", err instanceof Error ? err : new Error(String(err)));
+        // Once per outage, not every poll
+        if (!this.failing) {
+          this.failing = true;
+          this.emit("error", err instanceof Error ? err : new Error(String(err)));
+        }
       }
       if (this.listening) this.timer = setTimeout(tick, pollIntervalMs);
     };
