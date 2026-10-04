@@ -181,13 +181,23 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
    * step whose reply the drop lost runs again. A `Move` with `duration_ms`
    * runs again in full.
    *
-   * @throws If the first connection to the robot fails.
+   * If the robot can't be reached at start, e.g. it's still booting or
+   * another client holds its one connection, the operator starts anyway,
+   * reports the robot disconnected and keeps trying in the background.
    */
   async start(): Promise<void> {
     if (this.running) return;
-
-    await this.connectRobot();
     this.running = true;
+
+    try {
+      await this.connectRobot();
+    } catch (err) {
+      this.emit(
+        "error",
+        new Error(`Couldn't connect to the robot, retrying: ${err instanceof Error ? err.message : err}`),
+      );
+      void this.reconnect();
+    }
 
     // Listen first, then recover, so a command landing in between is seen
     // by at least one of them. `seen` drops the duplicates.
@@ -249,7 +259,14 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     connection.on("disconnected", () => {
       if (connection === this.connection) this.robotLost("Robot connection closed");
     });
-    await connection.connect();
+    try {
+      await connection.connect();
+    } catch (err) {
+      // Close the half-open attempt, or each retry leaves one behind
+      connection.removeAllListeners();
+      await connection.disconnect().catch(() => {});
+      throw err;
+    }
     connection.subscribe(RtcTopic.LOW_STATE);
     this.connection = connection;
     this.lastRobotMessageAt = Date.now();
