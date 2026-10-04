@@ -193,8 +193,12 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 				</Step>
 
 				<Step n={2} title="Get testnet 0G" done={enoughFunds} collapse>
-					{address && !enoughFunds && <FaucetStep address={address} needed={data.price + GAS_HEADROOM} />}
-					{balance.data && (
+					{/* Only once step 1 is done: a wallet asked to sign before it's on the
+					    network can lose the reply (MetaMask on a phone did) */}
+					{address && !wrongChain && !enoughFunds && (
+						<FaucetStep address={address} needed={data.price + GAS_HEADROOM} />
+					)}
+					{address && !wrongChain && balance.data && (
 						<p className="mt-2 text-xs text-ink-muted">Balance: {formatEther(balance.data.value)} 0G</p>
 					)}
 				</Step>
