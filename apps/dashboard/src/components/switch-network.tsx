@@ -1,42 +1,42 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { numberToHex } from 'viem';
 import { useConnection, useDisconnect, useSwitchChain } from 'wagmi';
 import { Button } from '@0gfoundation/0g-ui/shell';
 import { Notice } from '@/components/notice';
 import { useWalletModal } from '@/components/wallet/wallet-modal';
 import { defaultNetwork } from '@/lib/networks';
+import { sessionChains, type SessionChains } from '@/lib/session-chains';
 
 /** No answer from the wallet after this long, and the step offers the manual route */
 const NO_ANSWER_MS = 20_000;
 
 const chain = defaultNetwork.chain;
 
-/** What a wallet needs to add the network, for `wallet_addEthereumChain` and by hand */
-const addParams = {
-	chainId: numberToHex(chain.id),
-	chainName: chain.name,
-	nativeCurrency: chain.nativeCurrency,
-	rpcUrls: [...chain.rpcUrls.default.http],
-	blockExplorerUrls: chain.blockExplorers ? [chain.blockExplorers.default.url] : []
-};
-
 /**
- * Moves the wallet onto the network the dashboard uses. Over WalletConnect
- * the network is added first: a wallet that doesn't know it may drop a bare
- * switch without answering (Rabby on a phone did), and wagmi only sends the
- * add after the switch fails. A wallet that still doesn't answer gets the
- * details to add it by hand, or the option to use another wallet.
+ * Moves the wallet onto the network the dashboard uses. A WalletConnect
+ * wallet only switches to networks it approved when it connected, so the
+ * session is read first: one that left this network out is told so at
+ * once, with no request sent, and offered another wallet. Others get the
+ * switch, and the details to add the network by hand if it goes unanswered.
  */
 export function SwitchNetwork() {
 	const { connector } = useConnection();
 	const switchChain = useSwitchChain();
-	const disconnect = useDisconnect();
-	const walletModal = useWalletModal();
+	const [session, setSession] = useState<SessionChains | undefined | null>(null);
 	const [asking, setAsking] = useState(false);
 	const [noAnswer, setNoAnswer] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		let cancelled = false;
+		sessionChains(connector).then((s) => {
+			if (!cancelled) setSession(s);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [connector]);
 
 	useEffect(() => {
 		if (!asking) return;
@@ -44,18 +44,28 @@ export function SwitchNetwork() {
 		return () => clearTimeout(timer);
 	}, [asking]);
 
+	// Still reading the session
+	if (session === null) return null;
+
+	if (session && !session.chainIds.includes(chain.id)) {
+		const wallet = session.wallet ?? 'Your wallet';
+		return (
+			<Notice tone="warning" title={`${wallet} left out ${chain.name}`}>
+				<p>
+					When it connected, {wallet} didn&apos;t include {chain.name}, and it won&apos;t switch to a network it
+					left out. Adding the network in the wallet doesn&apos;t change that. Connect with a wallet that supports{' '}
+					{chain.name} instead. MetaMask does.
+				</p>
+				<UseAnotherWallet />
+			</Notice>
+		);
+	}
+
 	async function ask() {
 		setError(null);
 		setNoAnswer(false);
 		setAsking(true);
 		try {
-			if (connector?.type === 'walletConnect') {
-				const provider = (await connector.getProvider()) as {
-					request: (args: { method: string; params: unknown[] }) => Promise<unknown>;
-				};
-				// A wallet that already has the network may refuse the add; the switch still follows
-				await provider.request({ method: 'wallet_addEthereumChain', params: [addParams] }).catch(() => {});
-			}
 			await switchChain.mutateAsync({ chainId: chain.id });
 		} catch (err) {
 			const e = err as { shortMessage?: string; message?: string };
@@ -79,27 +89,35 @@ export function SwitchNetwork() {
 					</p>
 					<dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
 						<Detail label="Network name" value={chain.name} />
-						<Detail label="RPC URL" value={addParams.rpcUrls[0]} />
+						<Detail label="RPC URL" value={chain.rpcUrls.default.http[0]} />
 						<Detail label="Chain ID" value={String(chain.id)} />
 						<Detail label="Symbol" value={chain.nativeCurrency.symbol} />
-						{addParams.blockExplorerUrls[0] && <Detail label="Explorer" value={addParams.blockExplorerUrls[0]} />}
+						{chain.blockExplorers && <Detail label="Explorer" value={chain.blockExplorers.default.url} />}
 					</dl>
 					<p className="mt-3">Or use another wallet. MetaMask adds networks reliably.</p>
-					<div className="mt-2">
-						<Button
-							size="small"
-							variant="secondary"
-							onClick={async () => {
-								await disconnect.mutateAsync().catch(() => {});
-								walletModal.open();
-							}}
-						>
-							Use another wallet
-						</Button>
-					</div>
+					<UseAnotherWallet />
 				</Notice>
 			)}
 		</>
+	);
+}
+
+function UseAnotherWallet() {
+	const disconnect = useDisconnect();
+	const walletModal = useWalletModal();
+	return (
+		<div className="mt-2">
+			<Button
+				size="small"
+				variant="secondary"
+				onClick={async () => {
+					await disconnect.mutateAsync().catch(() => {});
+					walletModal.open();
+				}}
+			>
+				Use another wallet
+			</Button>
+		</div>
 	);
 }
 
