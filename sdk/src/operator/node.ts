@@ -70,6 +70,12 @@ export interface OperatorNodeOptions {
 /** The link to the robot dropped while a command was running */
 class RobotLinkLost extends Error {}
 
+/**
+ * After a missed reply, this long without any data from the robot means the
+ * link is dead rather than the reply lost. It streams low state at ~1 Hz.
+ */
+const NO_REPLY_SILENCE_MS = 2000;
+
 /** Waits between reconnect attempts, in ms; the last repeats */
 const RECONNECT_BACKOFF_MS = [1000, 2000, 5000, 10_000];
 
@@ -98,6 +104,8 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
 
   private queue: OnChainCommand[] = [];
   private seen = new Set<bigint>();
+  /** Steps of a command the robot has finished, by nonce, so a retry skips them */
+  private stepsDone = new Map<bigint, number>();
   private draining = false;
 
   private robotConnected = false;
@@ -165,8 +173,11 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
    *
    * If the robot link drops (the channel closes, or the robot sends nothing
    * for `robotSilenceMs`), the operator reconnects with backoff and the
-   * queue waits. A command the drop interrupted runs again once the robot
-   * is back, rather than failing.
+   * queue waits. A command the drop interrupted resumes once the robot is
+   * back, rather than failing: a step counts as done when the robot replies
+   * to it, so a Sit that finished before the drop only reruns RiseSit. A
+   * step whose reply the drop lost runs again. A `Move` with `duration_ms`
+   * runs again in full.
    *
    * @throws If the first connection to the robot fails.
    */
@@ -204,6 +215,7 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
     this.listener.stop();
     this.queue = [];
     this.seen.clear();
+    this.stepsDone.clear();
     this.robotConnected = false;
     this.publishStatus();
     for (const resolve of this.robotWaiters.splice(0)) resolve();
@@ -366,17 +378,22 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
         }
         this.robot().sportCommand(SportCommand.StopMove);
       } else {
-        // Single command, run until the robot says it's done
-        await this.runAndWait(cmd.apiId, params);
-
-        // Return to standing, e.g. RiseSit after Sit
+        // The move, then its exit move if it has one (RiseSit after Sit).
+        // Each step runs until the robot says it's done, and a retry after
+        // a dropped link resumes at the first step the robot didn't finish.
         const exitApiId = SCHEMA_BY_API_ID.get(cmd.apiId)?.exitApiId;
-        if (exitApiId !== undefined) {
-          await sleep(this.settleMs);
-          await this.runAndWait(exitApiId);
+        const steps = [
+          { apiId: cmd.apiId, params },
+          ...(exitApiId === undefined ? [] : [{ apiId: exitApiId, params: undefined }]),
+        ];
+        for (let i = this.stepsDone.get(cmd.nonce) ?? 0; i < steps.length; i++) {
+          if (i > 0) await sleep(this.settleMs);
+          await this.runAndWait(steps[i].apiId, steps[i].params);
+          this.stepsDone.set(cmd.nonce, i + 1);
         }
       }
 
+      this.stepsDone.delete(cmd.nonce);
       this.finish(cmd, true, "");
     } catch (err) {
       if (err instanceof RobotLinkLost || !this.robotConnected) {
@@ -385,6 +402,7 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
         return;
       }
       const errMsg = err instanceof Error ? err.message : String(err);
+      this.stepsDone.delete(cmd.nonce);
       this.finish(cmd, false, errMsg);
     }
 
@@ -422,7 +440,12 @@ export class OperatorNode extends EventEmitter<OperatorNodeEvents> {
       throw new RobotLinkLost(err instanceof Error ? err.message : String(err));
     }
     if (code === null) {
-      if (!this.robotConnected) throw new RobotLinkLost("Robot link lost before it replied");
+      // A dead link can still look open for a while. The robot streams state
+      // about once a second, so silence as well as no reply means it's gone.
+      if (!this.robotConnected || Date.now() - this.lastRobotMessageAt > NO_REPLY_SILENCE_MS) {
+        this.robotLost("No reply and no data from the robot");
+        throw new RobotLinkLost("Robot link lost before it replied");
+      }
       this.emit("error", new Error(`No reply from the robot to apiId ${apiId}`));
     } else if (code !== 0) {
       throw new Error(`Robot replied with code ${code} to apiId ${apiId}`);
