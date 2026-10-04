@@ -1,15 +1,17 @@
 'use client';
 
-import { use, useMemo, useState, type ReactNode } from 'react';
+import { use, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { formatEther, parseEther } from 'viem';
 import { useBalance, useConnection, useSwitchChain, useWalletClient } from 'wagmi';
-import { CommandStatus, type ResolvedMenuItem } from '@0g-foundation/zerobot-sdk';
+import { CommandStatus, waitForReceipt, type ResolvedMenuItem } from '@0g-foundation/zerobot-sdk';
 import { Button, ButtonLink } from '@0gfoundation/0g-ui/shell';
+import { MoveReceipts, type ReceiptCard } from '@/components/move-receipts';
 import { WalletControls } from '@/components/wallet-controls';
 import { Notice } from '@/components/notice';
 import { WalletAddress } from '@/components/wallet-address';
 import { errorMessage, readClient, walletClient } from '@/lib/chain';
 import { defaultNetwork } from '@/lib/networks';
+import { receiptView, useMoveReceipts, type MoveReceipt } from '@/lib/move-receipts';
 import { useQueue } from '@/lib/use-queue';
 import { useRobot } from '@/lib/use-robot';
 import { useRobotStatus, type LiveStatus } from '@/lib/use-robot-status';
@@ -19,12 +21,9 @@ const MAX_NOTE_BYTES = 64;
 const GAS_HEADROOM = parseEther('0.005');
 const FAUCET_URL = 'https://faucet.0g.ai';
 
-interface Submission {
-	/** The robot's nonce before sending, so ours is at or after it */
-	fromNonce: bigint;
-	apiId: number;
-	note: string;
-	error?: string;
+function isRejection(err: unknown): boolean {
+	const e = err as { code?: unknown; message?: string } | undefined;
+	return e?.code === 'ACTION_REJECTED' || e?.code === 4001 || /rejected|denied/i.test(e?.message ?? '');
 }
 
 export default function RobotPage({ params }: { params: Promise<{ name: string }> }) {
@@ -34,7 +33,7 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 	const { data: wallet } = useWalletClient();
 	const switchChain = useSwitchChain();
 	const balance = useBalance({ address, chainId: defaultNetwork.chain.id, query: { refetchInterval: 4000 } });
-	const { entries } = useQueue(robot.data?.robotId);
+	const { entries } = useQueue(robot.data?.robotId, 50);
 	const status = useRobotStatus(robot.data?.robotId);
 	// Only take payment when the operator and robot are both up, or the move
 	// would wait in the queue and expire
@@ -42,7 +41,17 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 
 	const [note, setNote] = useState('');
 	const [move, setMove] = useState<ResolvedMenuItem | null>(null);
-	const [submission, setSubmission] = useState<Submission | null>(null);
+	const { receipts, setReceipts, add, update, remove } = useMoveReceipts(robot.data?.robotId, entries);
+	// null: open until the first payment, then collapsed under "New move"
+	const [formOpen, setFormOpen] = useState<boolean | null>(null);
+	const showForm = formOpen ?? receipts.length === 0;
+	// Which request for a receipt is current, so a superseded one can't overwrite it
+	const attempts = useRef(new Map<string, number>());
+	const [now, setNow] = useState(() => Date.now());
+	useEffect(() => {
+		const timer = setInterval(() => setNow(Date.now()), 1000);
+		return () => clearInterval(timer);
+	}, []);
 
 	const data = robot.data;
 	const noteBytes = new TextEncoder().encode(note.trim()).length;
@@ -50,30 +59,64 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 	const enoughFunds = data && balance.data ? balance.data.value >= data.price + GAS_HEADROOM : false;
 
 	const pending = entries.filter((e) => e.command.status === CommandStatus.Pending);
-	const mine = useMemo(() => {
-		if (!submission || !address) return undefined;
-		return entries.find(
-			(e) =>
-				e.command.nonce >= submission.fromNonce &&
-				e.command.sender.toLowerCase() === address.toLowerCase() &&
-				e.command.apiId === submission.apiId &&
-				e.command.note === submission.note
-		);
-	}, [entries, submission, address]);
+	const myNonces = new Set(receipts.map((r) => r.nonce).filter(Boolean));
 
-	async function send() {
-		if (!data || !wallet || !move) return;
-		const trimmed = note.trim();
-		const fromNonce = await readClient().getRobotNonce(data.robotId);
-		setSubmission({ fromNonce, apiId: move.apiId, note: trimmed });
+	/**
+	 * Ask the wallet to pay for a move. A new payment gets a receipt; a retry
+	 * asks again for an existing one. The wallet can't take back the earlier
+	 * request, so if both are confirmed the second gets its own receipt.
+	 */
+	async function pay(existing?: MoveReceipt) {
+		if (!data || !wallet || !address) return;
+		const apiId = existing?.apiId ?? move?.apiId;
+		const name = existing?.note ?? note.trim();
+		if (apiId === undefined) return;
+		const id = existing?.id ?? crypto.randomUUID();
+		if (existing) {
+			update(id, { stage: 'signing', startedAt: Date.now(), error: undefined });
+		} else {
+			const fromNonce = String(await readClient().getRobotNonce(data.robotId));
+			add({ id, apiId, note: name, sender: address, fromNonce, startedAt: Date.now(), stage: 'signing' });
+			setFormOpen(false);
+			setMove(null);
+		}
+		const attempt = (attempts.current.get(id) ?? 0) + 1;
+		attempts.current.set(id, attempt);
+
 		try {
-			await walletClient(wallet).dispatchCommand(data.robotId, move.apiId, '', {
-				value: data.price,
-				note: trimmed
+			// The hash as soon as the wallet signs, rather than after the receipt
+			const tx = await walletClient(wallet).dispatcher.dispatchCommand(data.robotId, apiId, '', name, {
+				value: data.price
 			});
+			setReceipts((prev) => {
+				const r = prev.find((x) => x.id === id);
+				if (r?.txHash && r.txHash !== tx.hash) {
+					return [
+						{ ...r, id: crypto.randomUUID(), txHash: tx.hash, stage: 'sent', nonce: undefined, startedAt: Date.now(), error: undefined },
+						...prev
+					];
+				}
+				return prev.map((x) =>
+					x.id === id ? { ...x, txHash: tx.hash, stage: x.nonce ? x.stage : 'sent', error: undefined } : x
+				);
+			});
+			// A reverted payment never reaches the queue, so say so
+			waitForReceipt(tx).catch((err) =>
+				setReceipts((prev) =>
+					prev.map((x) =>
+						x.txHash === tx.hash && !x.nonce ? { ...x, stage: 'failed', error: errorMessage(err) } : x
+					)
+				)
+			);
 		} catch (err) {
-			// The queue may already show it if only the slow receipt failed
-			setSubmission((s) => (s ? { ...s, error: errorMessage(err) } : s));
+			if (attempts.current.get(id) !== attempt) return;
+			setReceipts((prev) =>
+				prev.map((x) =>
+					x.id === id && !x.txHash && !x.nonce
+						? { ...x, stage: isRejection(err) ? 'rejected' : 'failed', error: errorMessage(err) }
+						: x
+				)
+			);
 		}
 	}
 
@@ -97,108 +140,121 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 
 			<Availability displayName={displayName} status={status.data} className="mt-4" />
 
-			{submission && !submission.error ? (
-				<Status
-					displayName={displayName}
-					found={mine}
-					position={mine ? pending.findIndex((e) => e.command.nonce === mine.command.nonce) : -1}
-					onAgain={() => {
-						setSubmission(null);
-						setMove(null);
-					}}
-				/>
+			<MoveReceipts
+				cards={receipts.map((receipt): ReceiptCard => {
+					const item = data.menu.find((m) => m.apiId === receipt.apiId);
+					return {
+						receipt,
+						view: receiptView(receipt, entries, now, displayName),
+						emoji: item?.emoji,
+						label: item?.label ?? 'Move'
+					};
+				})}
+				onRetry={(id) => {
+					const r = receipts.find((x) => x.id === id);
+					if (r) void pay(r);
+				}}
+				onClose={remove}
+				onClearCompleted={() =>
+					setReceipts((prev) => prev.filter((r) => !receiptView(r, entries, now, displayName).terminal))
+				}
+			/>
+
+			{!showForm ? (
+				<button
+					type="button"
+					onClick={() => setFormOpen(true)}
+					className="mt-4 flex w-full cursor-pointer items-center justify-between rounded-2xl border border-dashed border-hairline px-4 py-3 text-sm font-medium text-ink-soft hover:bg-ink/5"
+				>
+					New move
+					<span aria-hidden>+</span>
+				</button>
 			) : (
 				<>
-					<Step n={1} title="Connect your wallet" done={Boolean(address) && !wrongChain} collapse>
-						{!address && <WalletControls />}
-						{wrongChain && (
-							<Button onClick={() => switchChain.mutate({ chainId: defaultNetwork.chain.id })}>
-								Switch to {defaultNetwork.chain.name}
-							</Button>
-						)}
-					</Step>
-
-					<Step n={2} title="Get testnet 0G" done={enoughFunds} collapse>
-						{address && !enoughFunds && (
-							<>
-								<p className="text-sm text-ink-soft">
-									You need at least {formatEther(data.price + GAS_HEADROOM)} 0G. Paste your address into
-									the faucet, then come back. This updates by itself.
-								</p>
-								<WalletAddress address={address} full copyable className="mt-2 text-sm" />
-								<div className="mt-3">
-									<ButtonLink href={FAUCET_URL} external variant="secondary" size="small">
-										Open the faucet
-									</ButtonLink>
-								</div>
-							</>
-						)}
-						{balance.data && (
-							<p className="mt-2 text-xs text-ink-muted">Balance: {formatEther(balance.data.value)} 0G</p>
-						)}
-					</Step>
-
-					<Step n={3} title="Your name" done={noteBytes > 0 && noteBytes <= MAX_NOTE_BYTES}>
-						<input
-							value={note}
-							onChange={(e) => setNote(e.target.value)}
-							placeholder="Shown on the screen"
-							maxLength={MAX_NOTE_BYTES}
-							className="w-full rounded-xl border border-hairline bg-bg px-4 py-3 text-base outline-none focus:border-ink"
-						/>
-						{noteBytes > MAX_NOTE_BYTES && <p className="mt-1 text-sm text-danger">That name is too long.</p>}
-					</Step>
-
-					<Step n={4} title="Pick a move" done={Boolean(move)}>
-						<div className="grid gap-2">
-							{data.menu.map((item) => (
-								<button
-									key={item.apiId}
-									type="button"
-									onClick={() => setMove(item)}
-									className={`flex items-center gap-4 rounded-2xl border p-4 text-left transition ${
-										move?.apiId === item.apiId ? 'border-ink bg-ink/5' : 'border-hairline hover:border-hairline-strong'
-									}`}
-								>
-									<span className="text-3xl">{item.emoji}</span>
-									<span>
-										<span className="block font-medium">{item.label}</span>
-										<span className="block text-sm text-ink-soft">{item.description}</span>
-									</span>
-								</button>
-							))}
-						</div>
-					</Step>
-
-					{submission?.error && (
-						<Notice tone="danger" title="That payment didn’t go through" className="mt-6">
-							{submission.error}
-						</Notice>
-					)}
-
-					<div className="mt-6">
-						<Button
-							fullWidth
-							onClick={send}
-							disabled={
-								!available ||
-								!wallet ||
-								Boolean(wrongChain) ||
-								!enoughFunds ||
-								!move ||
-								noteBytes === 0 ||
-								noteBytes > MAX_NOTE_BYTES
-							}
-						>
-							{!status.data
-								? `Checking ${displayName}…`
-								: available
-									? `Pay ${formatEther(data.price)} 0G`
-									: status.data.operatorOnline
-										? `${displayName} is reconnecting…`
-										: `${displayName} is offline`}
+				<Step n={1} title="Connect your wallet" done={Boolean(address) && !wrongChain} collapse>
+					{!address && <WalletControls />}
+					{wrongChain && (
+						<Button onClick={() => switchChain.mutate({ chainId: defaultNetwork.chain.id })}>
+							Switch to {defaultNetwork.chain.name}
 						</Button>
+					)}
+				</Step>
+
+				<Step n={2} title="Get testnet 0G" done={enoughFunds} collapse>
+					{address && !enoughFunds && (
+						<>
+							<p className="text-sm text-ink-soft">
+								You need at least {formatEther(data.price + GAS_HEADROOM)} 0G. Paste your address into
+								the faucet, then come back. This updates by itself.
+							</p>
+							<WalletAddress address={address} full copyable className="mt-2 text-sm" />
+							<div className="mt-3">
+								<ButtonLink href={FAUCET_URL} external variant="secondary" size="small">
+									Open the faucet
+								</ButtonLink>
+							</div>
+						</>
+					)}
+					{balance.data && (
+						<p className="mt-2 text-xs text-ink-muted">Balance: {formatEther(balance.data.value)} 0G</p>
+					)}
+				</Step>
+
+				<Step n={3} title="Your name" done={noteBytes > 0 && noteBytes <= MAX_NOTE_BYTES}>
+					<input
+						value={note}
+						onChange={(e) => setNote(e.target.value)}
+						placeholder="Shown on the screen"
+						maxLength={MAX_NOTE_BYTES}
+						className="w-full rounded-xl border border-hairline bg-bg px-4 py-3 text-base outline-none focus:border-ink"
+					/>
+					{noteBytes > MAX_NOTE_BYTES && <p className="mt-1 text-sm text-danger">That name is too long.</p>}
+				</Step>
+
+				<Step n={4} title="Pick a move" done={Boolean(move)}>
+					<div className="grid gap-2">
+						{data.menu.map((item) => (
+							<button
+								key={item.apiId}
+								type="button"
+								onClick={() => setMove(item)}
+								className={`flex items-center gap-4 rounded-2xl border p-4 text-left transition ${
+									move?.apiId === item.apiId ? 'border-ink bg-ink/5' : 'border-hairline hover:border-hairline-strong'
+								}`}
+							>
+								<span className="text-3xl">{item.emoji}</span>
+								<span>
+									<span className="block font-medium">{item.label}</span>
+									<span className="block text-sm text-ink-soft">{item.description}</span>
+								</span>
+							</button>
+						))}
 					</div>
+				</Step>
+
+				<div className="mt-6">
+					<Button
+						fullWidth
+						onClick={() => pay()}
+						disabled={
+							!available ||
+							!wallet ||
+							Boolean(wrongChain) ||
+							!enoughFunds ||
+							!move ||
+							noteBytes === 0 ||
+							noteBytes > MAX_NOTE_BYTES
+						}
+					>
+						{!status.data
+							? `Checking ${displayName}…`
+							: available
+								? `Pay ${formatEther(data.price)} 0G`
+								: status.data.operatorOnline
+									? `${displayName} is reconnecting…`
+									: `${displayName} is offline`}
+					</Button>
+				</div>
 				</>
 			)}
 
@@ -208,7 +264,9 @@ export default function RobotPage({ params }: { params: Promise<{ name: string }
 					<ol className="mt-2 space-y-1 text-sm">
 						{pending.map((e, i) => (
 							<li key={String(e.command.nonce)} className="flex justify-between">
-								<span>{e.command.note || 'Anonymous'}</span>
+								<span className={myNonces.has(String(e.command.nonce)) ? 'font-semibold' : ''}>
+									{e.command.note || 'Anonymous'}
+								</span>
 								<span className="text-ink-muted">{i === 0 ? 'now' : `#${i + 1}`}</span>
 							</li>
 						))}
@@ -282,49 +340,6 @@ function Step({
 				{title}
 			</h2>
 			{!(done && collapse) && children && <div className="mt-3">{children}</div>}
-		</section>
-	);
-}
-
-function Status({
-	displayName,
-	found,
-	position,
-	onAgain
-}: {
-	displayName: string;
-	found: ReturnType<typeof useQueue>['entries'][number] | undefined;
-	position: number;
-	onAgain: () => void;
-}) {
-	let headline: string;
-	let detail: string | null = null;
-	if (!found) {
-		headline = 'Confirm in your wallet';
-		detail = 'Then hang tight. It takes a few seconds to reach the robot.';
-	} else if (found.command.status === CommandStatus.Executed) {
-		headline = 'Done!';
-		detail = `Thanks for playing with ${displayName}.`;
-	} else if (found.command.status !== CommandStatus.Pending) {
-		headline = 'That one didn’t run';
-		detail = 'The robot couldn’t do this move.';
-	} else if (position <= 0) {
-		headline = `${displayName} is doing your move now`;
-		detail = 'Look at the stage!';
-	} else {
-		headline = `You’re #${position + 1} in the queue`;
-		detail = `${position} ${position === 1 ? 'move' : 'moves'} ahead of you.`;
-	}
-
-	return (
-		<section className="mt-8 rounded-2xl border border-hairline p-6 text-center">
-			<p className="text-2xl font-semibold">{headline}</p>
-			{detail && <p className="mt-2 text-ink-soft">{detail}</p>}
-			{found && found.command.status !== CommandStatus.Pending && (
-				<div className="mt-4">
-					<Button onClick={onAgain}>Send another move</Button>
-				</div>
-			)}
 		</section>
 	);
 }

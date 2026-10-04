@@ -5,6 +5,7 @@
 
 // Chain integration
 export { ChainClient, ChainListener, toOnChainCommand } from "./chain/index.js";
+export { waitForReceipt } from "./chain/wait.js";
 export type { ChainListenerEvents } from "./chain/index.js";
 
 // Wallet-library interop — consumers may pass `ChainConfig.walletClient`
