@@ -250,6 +250,23 @@ export class ChainClient {
   }
 
   /**
+   * Hold or release the robot's queue. The operator finishes the command
+   * it's running and starts no others while paused; payments still go
+   * through. Only callable by the robot's owner or an operator.
+   */
+  async setQueuePaused(
+    robotId: string,
+    paused: boolean,
+  ): Promise<ContractTransactionReceipt | null> {
+    const tx = await this.registry.setQueuePaused(robotId, paused);
+    return waitForReceipt(tx);
+  }
+
+  async isQueuePaused(robotId: string): Promise<boolean> {
+    return this.registry.isQueuePaused(robotId);
+  }
+
+  /**
    * Revoke a controller's dispatch authorization. Only callable by the owner.
    */
   async removeController(

@@ -4,6 +4,12 @@ import type { QueueEntry } from './use-queue';
 /** Matches `OperatorNodeOptions.settleMs`'s default */
 export const SETTLE_MS = 1000;
 
+/** A stretch when the operator starts nothing new: the robot is away or the queue paused. `to` is Infinity while it lasts. */
+export interface Hold {
+	from: number;
+	to: number;
+}
+
 export interface Slot {
 	entry: QueueEntry;
 	schema: CommandSchema;
@@ -23,18 +29,19 @@ export interface Slot {
  * rejected without running, so they take no time.
  *
  * Only commands this page saw while pending get a slot. Ones already done
- * when the page loaded have no start time to replay. Nothing starts before
- * `availableFrom`, when the robot last came online: the operator holds the
- * queue while the robot is away.
+ * when the page loaded have no start time to replay. Nothing starts during a
+ * hold, while the robot is away or the queue is paused: a move due then
+ * starts when the hold ends, and one already running plays out. Holds are
+ * absolute times kept by the page, so moves before a hold keep their slots.
  */
 export function schedule(
 	entries: QueueEntry[],
 	schemas: Map<number, CommandSchema>,
 	menu: Set<number>,
-	availableFrom = 0
+	holds: Hold[] = []
 ): Slot[] {
 	const slots: Slot[] = [];
-	let free = availableFrom;
+	let free = 0;
 	for (const entry of entries) {
 		const schema = schemas.get(entry.command.apiId);
 		if (!entry.seenPending || !schema || !menu.has(schema.apiId)) continue;
@@ -42,12 +49,29 @@ export function schedule(
 			continue;
 		}
 		const exit = schema.exitApiId !== undefined ? schemas.get(schema.exitApiId) : undefined;
-		const start = Math.max(entry.seenAt, free);
+		const start = afterHolds(Math.max(entry.seenAt, free), holds);
+		// Held with no end yet: neither this nor anything after it has a time
+		if (start === Infinity) break;
 		const run = schema.estimatedDurationMs + (exit ? SETTLE_MS + exit.estimatedDurationMs : 0);
 		free = start + run + SETTLE_MS;
 		slots.push({ entry, schema, exit, start, end: free });
 	}
 	return slots;
+}
+
+/** The first time at or after `t` outside every hold */
+function afterHolds(t: number, holds: Hold[]): number {
+	let moved = true;
+	while (moved) {
+		moved = false;
+		for (const h of holds) {
+			if (t >= h.from && t < h.to) {
+				t = h.to;
+				moved = true;
+			}
+		}
+	}
+	return t;
 }
 
 /**

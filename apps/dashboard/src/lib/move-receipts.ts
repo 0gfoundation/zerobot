@@ -133,7 +133,9 @@ export function receiptView(
 	r: MoveReceipt,
 	entries: QueueEntry[],
 	now: number,
-	displayName: string
+	displayName: string,
+	/** The queue is paused, so nothing is running */
+	queuePaused = false
 ): ReceiptView {
 	const entry = r.nonce ? entries.find((e) => String(e.command.nonce) === r.nonce) : undefined;
 	if (entry) {
@@ -155,6 +157,15 @@ export function receiptView(
 		}
 		const pending = entries.filter((e) => e.command.status === CommandStatus.Pending);
 		const ahead = pending.findIndex((e) => e.command.nonce === entry.command.nonce);
+		if (ahead <= 0 && queuePaused) {
+			return {
+				tone: 'pending',
+				status: 'Next',
+				title: 'You’re next',
+				detail: `${displayName} is taking a short break. Your move runs when it’s back.`,
+				terminal: false
+			};
+		}
 		if (ahead <= 0) {
 			return { tone: 'pending', status: 'Now', title: `${displayName} is doing your move`, detail: 'Look at the stage!', terminal: false };
 		}

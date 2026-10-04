@@ -65,6 +65,10 @@ async function main(): Promise<void> {
     console.log("Operator node started. Listening for on-chain commands...");
   });
 
+  operator.on("queuePaused", (paused) => {
+    console.log(paused ? "Queue paused: finishing the current move, then holding" : "Queue resumed");
+  });
+
   operator.on("chainRecovered", () => {
     console.log("Chain reachable again");
   });

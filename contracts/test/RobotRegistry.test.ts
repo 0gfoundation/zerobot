@@ -148,6 +148,39 @@ describe("RobotRegistry", function () {
     });
   });
 
+  describe("Queue pause", function () {
+    it("should let the owner or an operator pause and resume the queue", async function () {
+      const { registry, owner, controller, robotId } = await loadFixture(deployFixture);
+      await registry.registerRobot(robotId, "go2-pro-001", "go2_pro", ZERO_ROOT);
+      await registry.addOperator(robotId, controller.address);
+      expect(await registry.isQueuePaused(robotId)).to.be.false;
+
+      await expect(registry.connect(controller).setQueuePaused(robotId, true))
+        .to.emit(registry, "QueuePausedSet")
+        .withArgs(robotId, controller.address, true);
+      expect(await registry.isQueuePaused(robotId)).to.be.true;
+
+      await registry.connect(owner).setQueuePaused(robotId, false);
+      expect(await registry.isQueuePaused(robotId)).to.be.false;
+    });
+
+    it("should refuse a pause from anyone but the owner or an operator", async function () {
+      const { registry, other, robotId } = await loadFixture(deployFixture);
+      await registry.registerRobot(robotId, "go2-pro-001", "go2_pro", ZERO_ROOT);
+      await expect(registry.connect(other).setQueuePaused(robotId, true)).to.be.revertedWith(
+        "Only robot owner or operator can pause the queue"
+      );
+    });
+
+    it("should still take payments while the queue is paused", async function () {
+      const { registry, other, robotId } = await loadFixture(deployFixture);
+      await registry.registerRobot(robotId, "go2-pro-001", "go2_pro", ZERO_ROOT);
+      await registry.setPublicCommands(robotId, true);
+      await registry.setQueuePaused(robotId, true);
+      expect(await registry.isAuthorized(robotId, other.address)).to.be.true;
+    });
+  });
+
   describe("Multicall", function () {
     it("should register and configure a robot in one transaction", async function () {
       const { registry, owner, controller, other, robotId } = await loadFixture(deployFixture);
