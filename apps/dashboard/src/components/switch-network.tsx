@@ -28,6 +28,8 @@ export function SwitchNetwork() {
 	const [asking, setAsking] = useState(false);
 	const [noAnswer, setNoAnswer] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	// On a phone this opens the wallet app, most often to add the network
+	const [isTouch] = useState(() => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -78,8 +80,17 @@ export function SwitchNetwork() {
 
 	return (
 		<>
+			{isTouch && (
+				<p className="mb-3 text-sm text-ink-soft">
+					Your wallet opens to add {chain.name} and switch to it. Approve it, then come back here.
+				</p>
+			)}
 			<Button onClick={ask} disabled={asking && !noAnswer}>
-				{asking && !noAnswer ? 'Check your wallet…' : `Switch to ${chain.name}`}
+				{asking && !noAnswer
+					? 'Check your wallet…'
+					: isTouch
+						? `Add ${chain.name} to your wallet`
+						: `Switch to ${chain.name}`}
 			</Button>
 			{error && !noAnswer && <p className="mt-2 text-sm text-danger">{error}</p>}
 			{noAnswer && (
