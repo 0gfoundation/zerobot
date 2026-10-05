@@ -17,7 +17,9 @@ import { ZeroGMark } from './zero-g-mark';
 const ITEMS: ShellLinkItem[] = [
 	{ href: '/robots', label: 'My robots' },
 	...(LOCAL_MODE ? [{ href: '/recordings', label: 'Recordings' }] : []),
-	{ href: 'https://faucet.0g.ai', label: 'Faucet', external: true }
+	{ href: 'https://faucet.0g.ai', label: 'Faucet', external: true },
+	// Where builders go from the public site; a local dashboard runs from the repo already
+	...(LOCAL_MODE ? [] : [{ href: 'https://github.com/0gfoundation/zerobot', label: 'SDK', external: true }])
 ];
 
 // The router for this app's own pages; a plain anchor for an absolute URL
